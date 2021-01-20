@@ -2,6 +2,7 @@ using DifferentialEquations
 using Plots
 using Flux
 using DiffEqFlux
+using Zygote: @showgrad
 
 omega = 1.0
 beta = 0.1
@@ -40,18 +41,32 @@ function loss()
 end
 
 # Now we tell Flux how to train the neural network
-data = Iterators.repeated((), 200)
+data = Iterators.repeated((), 500)
 opt = ADAM(0.2)
+
 cb = function ()
     display(loss())
+    display(params)
     s = solve(remake(problem, u0=u0, p=p), Tsit5(), saveat=0.1, reltol=1e-8, abstol=1e-8)
     display(plot(s.t, s[1, :], ylim=(-1,1)))
     display(scatter!(t, data_batch, ylim=(-1,1)))
 end
 
+# @time Flux.train!(loss, params, data, opt, cb=cb)
 
-cb()
-@time Flux.train!(loss, params, data, opt, cb=cb)
+function custom_train!(loss, ps, data, opt; cb)
+    for iter in data
+        gs = Flux.gradient(ps) do
+            training_loss = loss()
+            return training_loss
+        end
+    println(gs.grads)
+    Flux.update!(opt, ps, gs)
+    # cb()
+    end
+end
+
+@time custom_train!(loss, params, data, opt, cb=cb)
 
 println(Flux.params(u0, p))
 
