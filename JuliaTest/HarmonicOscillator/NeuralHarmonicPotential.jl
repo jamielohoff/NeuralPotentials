@@ -1,4 +1,6 @@
 using DifferentialEquations, Flux, DiffEqFlux, Plots
+include("../PotPlot.jl")
+using .PotPlot
 
 ### Creation of synthethetic data---------------------- #
 omega = 1.0
@@ -50,12 +52,18 @@ end
 opt = ADAM(0.01, (0.7, 0.9))
 
 cb = function(p,l,pred)
-    println(l)
+    display(l)
+    dispay(p[1:3])
     display(plot(data_t, pred[1, :], ylim=(-1,1)))
     display(scatter!(data_t, data_batch, ylim=(-1,1)))
-    l < 0.01
+    return false
 end
 
 result = DiffEqFlux.sciml_train(loss_n_ode, p, opt, cb=cb, maxiters=1000)
 println("Best result: ", result.minimizer)
+
+x0 = Array(range(-5.0, 5.0, step = 0.1))
+y0 = PotPlot.calculatepotential(x0, dV, result.minimizer)
+
+plot(x0, y0)
 

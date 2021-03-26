@@ -8,17 +8,11 @@ data = outerjoin(sndata,grbdata,on=[:z,:my,:me])
 
 H0 = 0.069 # 1 / Gyr
 c = 306.4 # in Mpc / Gyr
-p = 0.25 .+ 0.75 .* rand(Float32, 4) # [0.3, 1.0] # 
+p = 0.25 .+  0.75 .* rand(Float32, 2) # [0.3, 1.0] # 
 u0 = [1.0, 0.0]
 tspan = (0.0, 13.4)
 
-dVdphi = FastChain(
-    FastDense(1, 25, sigmoid),
-    FastDense(25, 1)
-)
-
-nnparams = initial_params(dVdphi)
-params = Flux.params(p, nnparams)
+params = Flux.params(p)
 
 dadt(a, p) = H0*sqrt( p[1] / a + (1.0-p[1]) * a^(3.0*p[2]-1.0) )
 mu(z, d_L) = 5.0 .* log10.((1.0 .+ z) .* d_L) .+ 25.0 # we have a +25 instead of -5 because we measure distances in Mpc
@@ -27,14 +21,10 @@ mu(z, d_L) = 5.0 .* log10.((1.0 .+ z) .* d_L) .+ 25.0 # we have a +25 instead of
 function friedmann!(du,u,p,t)
     a = u[1]
     d_L = u[2]
-    phi = u[3]
-    dphi = u[4]
     
     # p[1] = omega_DE_0, p[2] = w
     du[1] = -dadt(a, p)
     du[2] = c/a
-    du[3] = dphi
-    du[4] = 0
 end
 
 problem = ODEProblem(friedmann!, u0, tspan, p)
@@ -56,7 +46,7 @@ function timelist(zlist, p)
 end
 
 # Now we tell Flux how to train the neural network
-iterator = Iterators.repeated((), 1000)
+iterator = Iterators.repeated((), 500)
 opt = ADAM(1e-3, (0.85, 0.9))
 
 cb = function()
@@ -85,7 +75,7 @@ end
 
 @time z, µ = custom_train!(params, iterator, opt; cb)
 
-scatter(
+plot1 = scatter(
             data.z, data.my, 
             title="Redshift-Magnitude Data",
             xlabel="redshift z",
@@ -95,5 +85,7 @@ scatter(
             legend=:bottomright
 )
 
-plot!(z, µ, label="fit")
+plot2 = plot(z, µ, label="fit")
+
+plot(plot1, plot2, layout = (2, 1), legend = false)
 

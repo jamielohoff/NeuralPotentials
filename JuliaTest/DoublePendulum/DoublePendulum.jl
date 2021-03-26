@@ -5,11 +5,11 @@ using DiffEqFlux
 
 m1 = 0.5
 m2 = 1.0
-l1 = 2.0
+l1 = 2.0 # 2.0
 l2 = 1.0
 const g = 9.81
 
-tspan = (0.0, 40.0)
+tspan = (0.0, 20.0)
 u0 = [50 * pi/180, -120 * pi/180, 0, 0] # 50, -120
 
 params = [m1, m2, l1, l2]
@@ -63,41 +63,78 @@ function loss()
 end
 
 # Now we tell Flux how to train the neural network
-data = Iterators.repeated((), 1000)
-opt = ADAM(0.1)
-cb = function ()
+data = Iterators.repeated((), 3000)
+opt = ADAM(0.01)
+cb = function()
     display(Flux.params(p))
     s = solve(remake(problem, p=p), Tsit5(), saveat=0.1)
     display(plot(s.t, s[1, :], ylim=(-2,2)))
     display(scatter!(t, angles[1,:], ylim=(-2,2)))
 end
 
-# @time Flux.train!(loss, params, data, opt, cb=cb)
-
 function custom_train!(params, data, opt; cb)
     for iter in data
+        println("Training loop 1")
         grads = Flux.gradient(params) do
             predict = solve(remake(problem, tspan=(0.0,1.0)), Tsit5(), p=p, saveat=0.1)[1:2, :]
             loss = sum(sum(abs2, phi-phi_gt) for (phi, phi_gt) in zip(predict, angles[:, 1:11]))
             println(loss)
             return loss
         end
-    Flux.update!(opt, params, grads)
-    cb()
+        Flux.update!(opt, params, grads)
+        cb()
     end
-    println("Beginning second part of the training...")
-    opt = ADAM(0.1)
+
+    opt = ADAM(1e-3)
     for iter in data
+        println("Training loop 2")
         grads = Flux.gradient(params) do
-            predict = solve(remake(problem, tspan=(0.0,20.0)), Tsit5(), p=p, saveat=0.1)[1:2, :]
-            loss = sum(sum(abs2, phi-phi_gt) for (phi, phi_gt) in zip(predict, angles[:, 1:201]))
+            predict = solve(remake(problem, tspan=(0.0,3.0)), Tsit5(), p=p, saveat=0.1)[1:2, :]
+            loss = sum(sum(abs2, phi-phi_gt) for (phi, phi_gt) in zip(predict, angles[:, 1:51]))
             println(loss)
             return loss
         end
-    grads.grads[params[1]][3] = 0
-    grads.grads[params[1]][4] = 0
-    Flux.update!(opt, params, grads)
-    # cb()
+        Flux.update!(opt, params, grads)
+        cb()
+    end
+
+    opt = ADAM(1e-3)
+    for iter in data
+        println("Training loop 3")
+        grads = Flux.gradient(params) do
+            predict = solve(remake(problem, tspan=(0.0,5.0)), Tsit5(), p=p, saveat=0.1)[1:2, :]
+            loss = sum(sum(abs2, phi-phi_gt) for (phi, phi_gt) in zip(predict, angles[:, 1:101]))
+            println(loss)
+            return loss
+        end
+        Flux.update!(opt, params, grads)
+        cb()
+    end
+
+    opt = ADAM(1e-4)
+    for iter in data
+        println("Training loop 4")
+        grads = Flux.gradient(params) do
+            predict = solve(remake(problem, tspan=(0.0,7.0)), Tsit5(), p=p, saveat=0.1)[1:2, :]
+            loss = sum(sum(abs2, phi-phi_gt) for (phi, phi_gt) in zip(predict, angles[:, 1:101]))
+            println(loss)
+            return loss
+        end
+        Flux.update!(opt, params, grads)
+        cb()
+    end
+
+    opt = ADAM(1e-4)
+    for iter in data
+        println("Training loop 5")
+        grads = Flux.gradient(params) do
+            predict = solve(remake(problem, tspan=(0.0,10.0)), Tsit5(), p=p, saveat=0.1)[1:2, :]
+            loss = sum(sum(abs2, phi-phi_gt) for (phi, phi_gt) in zip(predict, angles[:, 1:101]))
+            println(loss)
+            return loss
+        end
+        Flux.update!(opt, params, grads)
+        cb()
     end
 end
 
