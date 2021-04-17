@@ -1,6 +1,6 @@
 using DifferentialEquations, Flux, DiffEqFlux, Plots
-include("../PotPlot.jl")
-using .PotPlot
+include("../Utils.jl")
+using .Utils
 
 c = 63241 # AU per year
 G = 39.478 # gravitational constant in new units : AU^3 * yr^-2 * M^-1
@@ -75,8 +75,8 @@ cb = function(p,l,pred)
     display(p[1:3])
     R = 1 ./ pred[1, :] # convert into Radii
     # Plotting the potential
-    x0 = Array(range(0.01, 3.0, step = 0.01))
-    y0 = PotPlot.calculatepotential(1.0 ./ x0, dV, ps[4:end])
+    x0 = Array(range(0.01, 1.0, step = 0.01))
+    y0 = Utils.calculatepotential(1.0 ./ x0, dV, ps[4:end])
     pot_plot = plot(x0, y0)
     # Plotting the prediction and ground truth
     pred_plot = plot(R .* cos.(pred.t), R .* sin.(pred.t), xlims=(-1.5, 1.5), ylims=(-1.5, 1.5))

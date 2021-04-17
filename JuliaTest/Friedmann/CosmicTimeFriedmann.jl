@@ -57,10 +57,10 @@ function custom_train!(params, iterator, opt; cb)
     z = 0.0
     µ = 0.0
     for iter in iterator
-        tlist = timelist(data.z, params[1])
+        tlist = unique(timelist(data.z, params[1]))
         grads = Flux.gradient(params) do
             pred = solve(remake(problem,tspan=(0.0,tlist[end])), Tsit5(), p=params[1], saveat=tlist)
-            z = 1.0 ./ pred[1,:] .- 1
+            z = 1.0 ./ pred[1,:] .- 1.0
             d_L = pred[2,:]
             µ = mu(z, d_L)
             loss = -1.0 * sum(abs2, µ .- data.my)
