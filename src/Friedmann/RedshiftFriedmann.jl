@@ -1,15 +1,13 @@
 using Flux, DiffEqFlux, DifferentialEquations
 using DataFrames, CSV, Plots
 
-sndata = CSV.read(raw"D:\Masterthesis\JuliaTest\Friedmann\supernovae.data", delim=' ', DataFrame) # supernova data
-grbdata = CSV.read(raw"D:\Masterthesis\JuliaTest\Friedmann\grbs.data", delim=' ', DataFrame) # gamma-ray bursts
+data, uniquez = MyUtils.loaddata(@__DIR__, "supernovae.csv", "grbs.csv")
 
-data = outerjoin(sndata,grbdata,on=[:z,:my,:me])
-uniquez = unique(data.z)
+const H0 = 0.069 # 1 / Gyr
+const c = 306.4 # in Mpc / Gyr
+const G = 1.0 # in Mpc^3 / (Gy^2 * eV)
+const rho_c_0 = 3*H0^2/(8pi*G) # Definition of the critical density
 
-H0 = 0.069 # 1 / Gyr
-c = 306.4 # in Mpc / Gyr
-p = 0.25 .+  0.75 .* rand(Float32, 2) # [0.3, 1.0] # 
 u0 = [H0, 0.0]
 tspan = (0.0, 7.0)
 

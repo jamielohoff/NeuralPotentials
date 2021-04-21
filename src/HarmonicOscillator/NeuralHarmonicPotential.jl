@@ -1,4 +1,4 @@
-using DifferentialEquations, Flux, DiffEqFlux, Zygote
+using DifferentialEquations, Flux, DiffEqFlux
 using Plots
 include("../MyUtils.jl")
 using .MyUtils
