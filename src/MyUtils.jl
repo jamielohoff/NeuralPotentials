@@ -3,7 +3,7 @@ module MyUtils
 # and one output neuron.
 # Also contains other helper functions for the Master thesis project.
 
-using Flux, DiffEqFlux, QuadGK
+using Flux, DiffEqFlux, QuadGK, DifferentialEquations
 using DataFrames, CSV
 
     function predictarray(range::Array, neuralnetwork::FastChain, params::Array)
@@ -14,17 +14,17 @@ using DataFrames, CSV
         return map(x -> neuralnetwork([x])[1], range)
     end
 
-    function integrateNN(upperbound::Real, neuralnetwork::FastChain, params::Array)
+    function integrateNN(neuralnetwork::FastChain, upperbound::Real, params::Array)
         integral, err = quadgk(x -> neuralnetwork([x], params), 0.0, upperbound, rtol=1e-8)
         return integral[1]
     end
 
-    function integrateNN(upperbound::Real, neuralnetwork::Chain)
+    function integrateNN(neuralnetwork::Chain, upperbound::Real)
         integral, err = quadgk(x -> neuralnetwork([x]), 0.0, upperbound, rtol=1e-8)
         return integral[1]
     end
     
-    function loaddata(dir, snfile, grbfile)
+    function loaddata(dir::AbstractString, snfile::AbstractString, grbfile::AbstractString)
         sndatapath = joinpath(dir, snfile)
         grbdatapath = joinpath(dir, grbfile)
 
@@ -35,6 +35,18 @@ using DataFrames, CSV
         uniquez = unique(data.z)
 
         return data, uniquez
+    end
+
+    function sampleTrajectories(ODE, params::Any, initialConditions::Array, t::Array)
+        tspan = (t[1], t[end])
+        trajectoryList = []
+        for i in 1:size(initialConditions)[1]
+            u0 = initialConditions[i,:]
+            problem = ODEProblem(ODE, u0, tspan, params)
+            sol = solve(problem, Tsit5(), saveat=t)
+            push!(trajectoryList, Array(sol))
+        end
+        return trajectoryList
     end
     
 end

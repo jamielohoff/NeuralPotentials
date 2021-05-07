@@ -1,56 +1,52 @@
-using DifferentialEquations, Flux, DiffEqFlux
-using Plots
+using DifferentialEquations, Flux, DiffEqFlux, Zygote
+using Plots, LinearAlgebra, Statistics
 include("../MyUtils.jl")
 using .MyUtils
 
 ### Creation of synthethetic data---------------------- #
-omega = 1.0f0
-beta = 0.0f0
+omega = 0.5f0
+beta = 0.1f0
 tspan = (0.0f0, 5.0f0)
-t = Array{Float32}(range(tspan[1], tspan[2], length=50))
-u0 = [0.0f0, 6.0f0] # contains x0 and dx0
-p = [omega]
+t = Array(range(tspan[1], tspan[2], length=256))
+u0 = [3.0f0, 0.0f0] # contains x0 and dx0
+p = [omega, beta]
 
-V0(x,p) = p[1]*x^4
-dV0(x,p) = Flux.gradient(y -> V0(y,p)[1], x)[1]
+V0(x,p) = 1 - cos(x) # p[1]*x^4 # 
+dV0(x,p) = Flux.gradient(x -> V0(x,p)[1], x)[1]
 
 function oscillator!(du, u, p, t)
     x = u[1]
     dx = u[2]
 
     du[1] = dx
-    du[2] = -dV0(x, p[1:end])[1] # -p[1] * dx
+    du[2] = -dV0(x, p)
 end
 problem = ODEProblem(oscillator!, u0, tspan, p)
 @time true_sol = solve(problem, Tsit5(), saveat=t)
+noise =  0.1f0 * (2 * rand(Float32, size(true_sol)) .- 1.0f0)
 
-data_batch = true_sol[1,:]
-noise = 0.0f0 # 0.1 * (2 * rand(Float32, size(data_batch)) .- 1)
-data_batch = Float32.(data_batch .+ noise)
-data_t = Float32.(true_sol.t)
-
+data = true_sol[1:2,:] .+ noise
+# dataloader = Flux.Data.DataLoader((data, t); batchsize=128, shuffle=true)
 ### End ------------------------------------------------ #
 
 # Defining the gradient of the potential
-V = FastChain(
-    FastDense(1, 10, sigmoid), 
-    FastDense(10, 1)
+dV = FastChain(
+    FastDense(1, 16, relu), 
+    FastDense(16, 1)
 )
-dV(x, p) = Flux.gradient(y -> V(y,p)[1], x)[1]
 
 otherparams = rand(Float32, 2) .+ [1.5f0, 0.0f0] # contains u0, du0 and beta
-p = vcat(otherparams, initial_params(V))
+params = vcat(otherparams, initial_params(dV))
 
 function neuraloscillator!(du, u, p, t)
     x = u[1]
     dx = u[2]
 
     du[1] = dx
-    du[2] = -dV(x,p[1:end])[1] # - p[1] * dx 
+    du[2] = -dV(x,p)[1] # - p[1] * dx 
 end
 
-prob = ODEProblem(neuraloscillator!, u0, tspan, p[3:end])
-
+prob = ODEProblem(neuraloscillator!, u0, tspan, params[3:end])
 
 function predict(params)
     return Array(solve(prob, Tsit5(), p=params[3:end], saveat=t))
@@ -58,24 +54,27 @@ end
 
 function loss(params)
     pred = predict(params)
-    return sum(abs2, data_batch .- pred[1, :]), pred
+    return mean((pred .- data).^2), pred
 end
 
 cb = function(p,l,pred)
     display(l)
     display(p[1:2])
-    display(Plots.plot(data_t, pred[1, :], ylim=(-4,4)))
-    display(Plots.scatter!(data_t, data_batch))
-    return l < 0.01
+    traj_plot = plot(t, pred[1, :], ylim=(-4,4))
+    traj_plot = scatter!(traj_plot, t, data[1,:])
+
+    # Plotting the potential
+    x0 = Array(range(-u0[1], u0[1], step=0.01))
+    y0 = map(x -> MyUtils.integrateNN(dV, x, p[3:end]), x0)
+    z0 = map(x -> V0(x,[omega,beta]), x0)
+    pot_plot = plot(x0, y0)
+    pot_plot = plot!(pot_plot, x0, z0, ylims=(-0.25,3.5), xlims=(-u0[1],u0[1]))
+
+    display(plot(traj_plot, pot_plot, layout=(2,1), size=(1200, 800)))
+    return l < 0.001
 end
 
-@time result = DiffEqFlux.sciml_train(loss, p, ADAM(0.1), cb=cb, maxiters=5000)
-println("Best result: ", result.minimizer)
+opt = ADAM(0.1, (0.85, 0.9))
 
-x0 = Array(range(-5.0f0, 5.0f0, step = 0.1f0))
-y0 = map(x -> V(x, result.minimizer[3:end])[1], x0)
-z0 = map(x -> V0(x, [omega]), x0)
-
-Plots.plot(x0, y0)
-Plots.plot!(x0, z0)
+@time result = DiffEqFlux.sciml_train(loss, params, opt, cb=cb, maxiters=2000)
 

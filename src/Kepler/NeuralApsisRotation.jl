@@ -1,23 +1,28 @@
-using DifferentialEquations
-using Plots
-using Flux
-using DiffEqFlux
+using DifferentialEquations, Flux, DiffEqFlux
+using Plots, Statistics, LinearAlgebra
 
-c = 1 # AU per year
-G = 0.5 # gravitational constant in new units : AU^3 * yr^-2 * M^-1
-M = 1 # measure mass in multiples of central mass
-rs = 1 # Schwarzschild radius in AU
+### Stellar Black Hole system
+
+const c = 9.454e9 # 63241 # megameters per year
+const G = 1.32e17# 39.478 # gravitational constant in new units : AU^3 * yr^-2 * M^-1
+# const c = 1 # AU per year
+# const G = 1 # gravitational constant in new units : AU^3 * yr^-2 * M^-1
+const M = 4 # measure mass in multiples of solar mass
+const rs = 2*G*M/c^2 # Schwarzschild radius in AU
+const year = 1 # measure time in years
 
 ### Creation of synthethetic data --------------------------------- #
 
-r0 = 4*rs # measure radius in multiples of r0, i.e. unit of length is AU
-year = 1 # measure time in years
-v0 = 0.6 * sqrt(G*M/r0)/sqrt(1-rs/r0)# 1.26
-u0 =  [1/r0, 0] # 
+r0 = 0.75 # measure radius in mega meters
+true_v0 = 0.6 * sqrt(G*M/r0)/sqrt(1-rs/r0)
+true_u0 =  [1/r0, 0] # 
 
-p = [M / (v0*r0)^2]
-tspan = (0.0, 10*pi)
-t = range(tspan[1], tspan[2], length=500)
+true_p = [G*M/(true_v0*r0)^2, G*M/c^2]
+phispan = (0.0, 10*pi)
+phi = range(phispan[1], phispan[2], length=512)
+
+V0(x,p) = -p[1]*x - p[2]*x^3
+dV0(x,p) = Flux.gradient(x -> V0(x,p)[1], x)[1]
 
 # Works! :)
 function apsisrotation!(du, u, p, t)
@@ -25,29 +30,25 @@ function apsisrotation!(du, u, p, t)
     dU = u[2]
 
     du[1] = dU
-    du[2] = G * p[1] * (1 - U^2) - U
+    du[2] = -dV0(U,p) - U
 end
 
-problem = ODEProblem(apsisrotation!, u0, tspan, p)
+problem = ODEProblem(apsisrotation!, true_u0, phispan, true_p)
 
-@time sol = solve(problem, Tsit5(), saveat=t)
+@time sol = solve(problem, Tsit5(), saveat=phi)
 
-angle_gt = sol.t 
 R_gt = 1 ./ sol[1,:] # convert into Radii
-
-noise = 0.02 * (2 * rand(Float64, size(R_gt)) .- 1)
+noise = 0.01 * (2 * rand(Float64, size(R_gt)) .- 1)
 R_gt = R_gt .+ noise
-
-plot(R_gt .* cos.(angle_gt), R_gt .* sin.(angle_gt))
 
 ### End ----------------------------------------------------------- #
 
 dV = FastChain(
-    FastDense(1, 25, sigmoid),
-    FastDense(25, 1)
+    FastDense(1, 16, relu),
+    FastDense(16, 1)
 )
 
-otherparams = rand(Float64, 3) # otherparams = [u0, p]
+otherparams = rand(Float64, 2) # otherparams = [u0, p]
 ps = vcat(otherparams, initial_params(dV))
 
 function neuralkepler!(du, u, p, t)
@@ -55,31 +56,43 @@ function neuralkepler!(du, u, p, t)
     dU = u[2]
 
     du[1] = dU
-    du[2] = G * p[1] - dV([U], p[2:end])[1]
+    du[2] = -dV([U], p)[1] - U
 end
 
-prob = ODEProblem(neuralkepler!, ps[1:2], tspan, ps[3:end])
+prob = ODEProblem(neuralkepler!, ps[1:2], phispan, ps[3:end])
 
 function predict(params)
-    solve(prob, Tsit5(), u0=params[1:2], p=params[3:end], saveat=t)
+    return Array(solve(prob, Tsit5(), u0=params[1:2], p=params[3:end], saveat=phi))
 end
 
 function loss(params) 
     pred = predict(params)
-    sum(abs2, x-y for (x,y) in zip(pred[1,:], sol[1, :])), pred
+    return mean((pred .- sol[1:2, :]).^2), pred
 end
 
 # Now we tell Flux how to train the neural network
-opt = ADAM(0.2, (0.7, 0.95))
+opt = ADAM(1e-2)
 
 cb = function(p,l,pred)
     display(l)
-    display(p[1:3])
+    display(p[1:2])
     R = 1 ./ pred[1, :] # convert into Radii
-    display(plot(R .* cos.(pred.t), R .* sin.(pred.t), xlims=(-4.0, 4.0), ylims=(-4.0, 4.0)))
-    display(scatter!(R_gt .* cos.(angle_gt), R_gt .* sin.(angle_gt)))
-    l < 0.01
+    # R_gt = 1 ./ gt[1,:]
+    traj_plot = plot(R .* cos.(phi), R .* sin.(phi), xlims=(-1.0, 1.0), ylims=(-1.0, 1.0))
+    traj_plot = scatter!(traj_plot, R_gt .* cos.(angle_gt), R_gt .* sin.(angle_gt))
+
+    # Plotting the potential
+    u0 = Array(range(0.01, 1.0, step=0.01))
+    # y0 = map(x -> MyUtils.integrateNN(dV, x, ps[3:end]), 1.0./u0)
+    y0 = map(x -> dV(x, p[3:end])[1], u0)
+    z0 = map(x -> dV0(x, true_p), u0)
+    # z0 = G*M / (true_v0*r0)^2 * 1.0./u0
+    pot_plot = plot(u0, y0)
+    pot_plot = plot!(pot_plot, u0, z0)
+
+    display(plot(traj_plot, pot_plot, layout=(2,1), size=(1200, 800)))
+    return false
 end
 
-@time res = DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=1000)
+@time result = DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=1000)
 

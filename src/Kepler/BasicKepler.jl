@@ -29,7 +29,7 @@ function kepler!(du, u, p, t)
     du[2] = G * p[1] - U # - G/c^2 * p[1] * U^2
 end
 
-problem = ODEProblem(angularkepler!, true_u0, tspan, true_p)
+problem = ODEProblem(kepler!, true_u0, tspan, true_p)
 
 @time sol = solve(problem, Tsit5(), saveat=t)
 
