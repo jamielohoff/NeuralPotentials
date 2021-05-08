@@ -1,7 +1,7 @@
 using DifferentialEquations, Flux, DiffEqFlux
 using Plots, Statistics, LinearAlgebra
 
-### Stellar Black Hole system
+### Stellar Black Hole System ###
 
 const c = 9.454e9 # 63241 # megameters per year
 const G = 1.32e17# 39.478 # gravitational constant in new units : AU^3 * yr^-2 * M^-1

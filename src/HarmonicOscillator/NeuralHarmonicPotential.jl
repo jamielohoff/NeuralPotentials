@@ -74,7 +74,7 @@ cb = function(p,l,pred)
     return l < 0.001
 end
 
-opt = ADAM(0.1, (0.85, 0.9))
+opt = ADAM(0.1)
 
 @time result = DiffEqFlux.sciml_train(loss, params, opt, cb=cb, maxiters=2000)
 

@@ -4,9 +4,9 @@ include("../MyUtils.jl")
 using .MyUtils
 
 ### Creation of synthethetic data---------------------- #
-omega = 1.0f0
-beta = 0.1f0
-tspan = (0.0f0, 5.0f0)
+const omega = 1.0f0
+const beta = 0.1f0
+tspan = (0.0f0, 2.0f0)
 t = Array(range(tspan[1], tspan[2], length=256))
 true_u0 = [3.0f0, 0.0f0] # contains x0 and dx0
 true_p = [omega, beta]
