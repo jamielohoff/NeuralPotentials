@@ -37,7 +37,18 @@ using DataFrames, CSV
         return data, uniquez
     end
 
-    function sampleTrajectories(ODE, params::Any, initialConditions::Array, t::Array)
+    function preparedata(data::DataFrame, uniquez::AbstractArray)
+        averagedata = DataFrame(mu = Real[], me = Real[])
+        for z in uniquez
+            idx = findall(x -> x==z, data.z)
+            avg_mu = sum([data.my[i] for i in idx]) / length(idx)
+            avg_me = sum([data.me[i] for i in idx]) / length(idx)
+            push!(averagedata, [avg_mu, avg_me])
+        end
+        return averagedata
+    end
+
+    function sampletrajectories(ODE, params::Any, initialConditions::AbstractArray, t::AbstractArray)
         tspan = (t[1], t[end])
         trajectoryList = []
         for i in 1:size(initialConditions)[1]
@@ -47,6 +58,18 @@ using DataFrames, CSV
             push!(trajectoryList, Array(sol))
         end
         return trajectoryList
+    end
+
+    # function to calculate the reduced χ² statistical measure 
+    # for a given model prediction, groundtruth and variance/error 
+    function reducedchisquared(model::AbstractArray, data::DataFrame)
+        return sum(abs2, (model .- data.mu) ./ data.me)
+    end
+
+    # function to calculate the equation of state depending on the redshift
+    # of a quintessence model with one scalar field
+    function calculateEOS(pot::AbstractArray, dphi::AbstractArray)
+        return (dphi.^2 .- 2 .* pot) ./ (dphi.^2 .+ 2 .* pot)
     end
     
 end

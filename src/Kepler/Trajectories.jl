@@ -34,7 +34,7 @@ function kepler!(du, u, p, t)
 end
 
 initialConditions = rand(Float32, (64, 2))
-@time trajectories = MyUtils.sampleTrajectories(kepler!, true_p, initialConditions, phi)
+@time trajectories = MyUtils.sampletrajectories(kepler!, true_p, initialConditions, phi)
 
 ### End -------------------------------------------------- #
 
