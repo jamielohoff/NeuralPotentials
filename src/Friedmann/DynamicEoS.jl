@@ -4,8 +4,9 @@ include("../MyUtils.jl")
 using .MyUtils
 
 data, uniquez = MyUtils.loaddata(@__DIR__, "supernovae.csv", "grbs.csv")
+averagedata = MyUtils.preparedata(data,uniquez)
 
-const H0 = 0.074 # 1 / Gyr
+const H0 = 0.07 # 1 / Gyr
 const c = 306.4 # in Mpc / Gyr
 const G = 1.0 # in Mpc^3 / (Gy^2 * eV)
 const rho_c_0 = 3*H0^2/(8pi*G) # Definition of the critical density
@@ -16,18 +17,6 @@ tspan = (0.0, 7.0)
 
 ps = vcat(p)
 mu(z, d_L) = 5.0 .* log10.(abs.((1.0 .+ z) .* d_L)) .+ 25.0 # we have a +25 instead of -5 because we measure distances in Mpc
-
-function preparedata(data)
-    averagedata = []
-    for z in uniquez
-        idx = findall(x -> x==z, data.z)
-        avg = sum([data.my[i] for i in idx]) / length(idx)
-        push!(averagedata, avg)
-    end
-    return averagedata
-end
-
-averagemu = preparedata(data)
 
 # Defining the time-dependent equation of state
 w_DE(z, p) = p[1] + p[2] * log(1+z)
@@ -54,7 +43,7 @@ end
 function loss(params)
     pred = predict(params)
     µ = mu(uniquez, pred[2,:])
-    return sum(abs2, µ .- averagemu), pred
+    return sum(abs2, µ .- averagedata.mu), pred
 end
 
 cb = function(p, l, pred)
@@ -72,20 +61,20 @@ plot1 = Plots.scatter(
             data.z, data.my, 
             title="Redshift-Magnitude Data",
             xlabel="redshift z",
-            ylabel="apparent magnitude μ",
+            ylabel="distance modulus μ",
             yerror=data.me,
             label="data",
             legend=:bottomright
 )
 
 plot1 = Plots.plot!(plot1, uniquez, mu(uniquez, res[2,:]), label="fit")
-w = map(z -> w_DE(z, result.minimizer[2:end]), uniquez)
-plot2 = Plots.plot(uniquez, w, title="Equation of State w")
+EoS = map(z -> w_DE(z, result.minimizer[2:end]), uniquez)
+plot2 = Plots.plot(uniquez, EoS, title="Equation of State w")
 
 println("Cosmological parameters: ")
 println("Mass parameter omega_m = ", result.minimizer[1])
 println("Parameters of the equation of state w: ", result.minimizer[2:end])
-println("Average equation of state w = ", mean(w))
+println("Average equation of state w = ", mean(EoS))
 
 plot(plot1, plot2, layout=(2, 1), legend=:bottomright, size=(1200, 800))
 

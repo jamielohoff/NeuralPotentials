@@ -23,7 +23,7 @@ function oscillator!(du, u, p, t)
 end
 
 initialConditions = hcat(2pi .* (rand(Float32, (64, 1)) .- 0.5f0), zeros(64))
-@time trajectories = MyUtils.sampleTrajectories(oscillator!, true_p, initialConditions, t)
+@time trajectories = MyUtils.sampletrajectories(oscillator!, true_p, initialConditions, t)
 
 ### End ------------------------------------------------ #
 

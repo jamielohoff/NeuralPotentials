@@ -2,6 +2,7 @@ using Flux, DiffEqFlux, DifferentialEquations
 using DataFrames, CSV, Plots
 
 data, uniquez = MyUtils.loaddata(@__DIR__, "supernovae.csv", "grbs.csv")
+averagedata = preparedata(data)
 
 const H0 = 0.069 # 1 / Gyr
 const c = 306.4 # in Mpc / Gyr
@@ -14,23 +15,6 @@ tspan = (0.0, 7.0)
 
 ps = vcat(u0, p)
 mu(z, d_L) = 5.0 .* log10.(abs.((1.0 .+ z) .* d_L)) .+ 25.0 # we have a +25 instead of -5 because we measure distances in Mpc
-
-function preparedata(data)
-    averagedata = []
-    for z in uniquez
-        idx = findall(x -> x==z, data.z)
-        avg = sum([data.my[i] for i in idx]) / length(idx)
-        push!(averagedata, avg)
-    end
-    return averagedata
-end
-
-function calculateEOS(phi, dphi, params)
-    pot = map(x -> V(x, params), phi)
-    w = (dphi.^2 .- 2 .* pot) ./ (dphi.^2 .+ 2 .* pot)
-end
-
-averagemu = preparedata(data)
 
 V(phi, p) = p[1]*exp(-p[2]*phi)*phi^2
 dV(phi, p) = Flux.gradient(x -> V(x,p), phi)[1]
@@ -61,7 +45,7 @@ end
 function loss(params)
     pred = predict(params)
     µ = mu(uniquez, pred[4,:])
-    return sum(abs2, µ .- averagemu), pred
+    return sum(abs2, µ .- averagedata.mu), pred
 end
 
 cb = function(p, l, pred)
@@ -79,16 +63,16 @@ plot1 = Plots.scatter(
             data.z, data.my, 
             title="Redshift-Magnitude Data",
             xlabel="redshift z",
-            ylabel="apparent magnitude μ",
+            ylabel="distance modulus μ",
             yerror=data.me,
             label="data",
             legend=:bottomright
 )
 
 plot1 = Plots.plot!(plot1, uniquez, mu(uniquez, res[4,:]), label="fit")
-w = calculateEOS(res[2,:], res[3,:], result.minimizer[6:end])
 pot = map(x -> V(x, result.minimizer[6:end])[1], res[2,:])
-plot2 = Plots.plot(uniquez, w, title="Equation of State")
+EoS = MyUtils.calculateEOS(pot, res[3,:])
+plot2 = Plots.plot(uniquez, EoS, title="Equation of State")
 plot3 = Plots.plot(res[2,:], pot, title="Potential")
 
 plot(plot1, plot2, plot3, layout=(3, 1), legend=:bottomright)
