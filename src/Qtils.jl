@@ -4,7 +4,7 @@ module Qtils
 # Also contains other helper functions for the Master thesis project.
 
 using Flux, DiffEqFlux, QuadGK, DifferentialEquations
-using DataFrames, CSV, Statistics, LinearAlgebra
+using DataFrames, CSV, Statistics, LinearAlgebra, Random
 
     function predictarray(range::Array, neuralnetwork::FastChain, params::Array)
         return map(x -> neuralnetwork([x], params)[1], range)
@@ -89,7 +89,7 @@ using DataFrames, CSV, Statistics, LinearAlgebra
     A function that randomly samples (ratio*dataset length) many observations
     from a sample and returns a ordered dataframe.
     """
-    function randomsample(df::DataFrame, ratio::Real)
+    function randomsample(df::AbstractDataFrame, ratio::Real)
         len = trunc(Int, nrow(df)*(1-ratio))
         for _ in 1:len
             idx = rand(1:nrow(df))
@@ -102,26 +102,18 @@ using DataFrames, CSV, Statistics, LinearAlgebra
     A function that randomly samples (ratio*dataset length) many observations
     from a sample and returns a ordered dataframe.
     """
-    function randomsample(df::AbstractDataFrame, ratio::Real)
+    function sample(df::AbstractDataFrame, ratio::Real)
         len = trunc(Int, nrow(df)*(1-ratio))
-        for _ in 1:len
-            idx = rand(1:nrow(df))
-            delete!(df, idx)
-        end
-        return df
+        return df[shuffle(1:nrow(df))[1:len], :]
     end
 
     """
     A function that randomly samples (ratio*dataset length) many observations
     from a sample and returns a ordered array.
     """
-    function randomsample(arr::AbstractArray, ratio::Real)
+    function sample(arr::AbstractArray, ratio::Real)
         len = trunc(Int, size(arr,2)*(1-ratio))
-        for _ in 1:len
-            idx = rand(1:size(arr,2))
-            arr = arr[:, 1:end .!= idx]
-        end
-        return arr
+        return arr[:,shuffle(1:size(arr,2))[1:len]]
     end
 
     """

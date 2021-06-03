@@ -76,7 +76,8 @@ pot_plot = plot(x0, y0)
 println("Beginning Bootstrap...")
 lk = ReentrantLock()
 @time Threads.@threads for rep in 1:repetitions
-    sampledata = Qtils.randomsample(fulldata, 0.5)
+    sampledata = Qtils.sample(fulldata, 0.5)
+    println(size(sampledata))
 
     otherparams = rand(Float32, 2) .+ [1.5, 0.0] # contains u0, du0
     params = vcat(otherparams, initial_params(dV))
