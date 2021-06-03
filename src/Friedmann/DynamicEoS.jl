@@ -1,10 +1,10 @@
 using Flux, DiffEqFlux, DifferentialEquations
 using DataFrames, CSV, Plots, Statistics
-include("../MyUtils.jl")
-using .MyUtils
+include("../Qtils.jl")
+using .Qtils
 
-data, uniquez = MyUtils.loaddata(@__DIR__, "supernovae.csv", "grbs.csv")
-averagedata = MyUtils.preparedata(data,uniquez)
+data, uniquez = Qtils.loaddata(@__DIR__, "supernovae.csv", "grbs.csv")
+averagedata = Qtils.preparedata(data,uniquez)
 
 const H0 = 0.07 # 1 / Gyr
 const c = 306.4 # in Mpc / Gyr

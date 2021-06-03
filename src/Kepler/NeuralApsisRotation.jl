@@ -5,8 +5,6 @@ using Plots, Statistics, LinearAlgebra
 
 const c = 9.454e9 # 63241 # megameters per year
 const G = 1.32e17# 39.478 # gravitational constant in new units : AU^3 * yr^-2 * M^-1
-# const c = 1 # AU per year
-# const G = 1 # gravitational constant in new units : AU^3 * yr^-2 * M^-1
 const M = 4 # measure mass in multiples of solar mass
 const rs = 2*G*M/c^2 # Schwarzschild radius in AU
 const year = 1 # measure time in years
@@ -79,11 +77,11 @@ cb = function(p,l,pred)
     R = 1 ./ pred[1, :] # convert into Radii
     # R_gt = 1 ./ gt[1,:]
     traj_plot = plot(R .* cos.(phi), R .* sin.(phi), xlims=(-1.0, 1.0), ylims=(-1.0, 1.0))
-    traj_plot = scatter!(traj_plot, R_gt .* cos.(angle_gt), R_gt .* sin.(angle_gt))
+    traj_plot = scatter!(traj_plot, R_gt .* cos.(phi), R_gt .* sin.(phi))
 
     # Plotting the potential
     u0 = Array(range(0.01, 1.0, step=0.01))
-    # y0 = map(x -> MyUtils.integrateNN(dV, x, ps[3:end]), 1.0./u0)
+    # y0 = map(x -> Qtils.integrateNN(dV, x, ps[3:end]), 1.0./u0)
     y0 = map(x -> dV(x, p[3:end])[1], u0)
     z0 = map(x -> dV0(x, true_p), u0)
     # z0 = G*M / (true_v0*r0)^2 * 1.0./u0

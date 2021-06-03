@@ -1,10 +1,10 @@
 using Flux, DiffEqFlux, DifferentialEquations
 using DataFrames, CSV, Plots, Statistics
-include("../MyUtils.jl")
+include("../Qtils.jl")
 using .MyUtils
 
-data, uniquez = MyUtils.loaddata(@__DIR__, "supernovae.csv", "grbs.csv")
-averagedata = MyUtils.preparedata(data, uniquez)
+data, uniquez = Qtils.loaddata(@__DIR__, "supernovae.csv", "grbs.csv")
+averagedata = Qtils.preparedata(data, uniquez)
 
 const H0 = 0.07 # 1 / Gyr
 const c = 306.4 # in Mpc / Gyr
@@ -19,8 +19,8 @@ mu(z, d_L) = 5.0 .* log10.(abs.((1.0 .+ z) .* d_L)) .+ 25.0 # we have a +25 inst
 
 # Defining the time-dependent equation of state
 w_DE = FastChain(
-    FastDense(1, 8, relu),
-    FastDense(8, 1) # choose output function such that 0 < |w| < 1
+    FastDense(1, 16, relu),
+    FastDense(16, 1) # choose output function such that 0 < |w| < 1
 )
 
 ps = vcat(p, initial_params(w_DE))
@@ -39,7 +39,6 @@ function friedmann!(du,u,p,z)
 end
 
 problem = ODEProblem(friedmann!, u0, tspan, p)
-opt = ADAM(1e-2)
 
 function predict(params)
     return Array(solve(problem, Tsit5(), p=params, saveat=uniquez))
@@ -48,8 +47,8 @@ end
 function loss(params)
     pred = predict(params)
     µ = mu(uniquez, pred[2,:])
-    # return sum(abs2, µ .- averagedata.mu), pred
-    return MyUtils.reducedchisquared(µ, averagedata), pred
+    return sum(abs2, µ .- averagedata.mu), pred
+    # return MyUtils.reducedchisquared(µ, averagedata), pred
 end
 
 cb = function(p, l, pred)
@@ -58,6 +57,7 @@ cb = function(p, l, pred)
     return l < 47.0
 end
 
+opt = ADAM(1e-2)
 @time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=500)
 
 res = solve(problem, Tsit5(), u0=u0, p=result.minimizer, saveat=uniquez)
@@ -77,7 +77,7 @@ EoS = map(z -> w_DE(z, result.minimizer[2:end])[1], uniquez)
 plot2 = Plots.plot(uniquez, EoS, title="Equation of State w", xlabel="redshift z", ylabel="equation of state w")
 
 println("Cosmological parameters: ")
-println("Mass parameter omega_m = ", result.minimizer[1])
+println("Mass parameter Ω_m = ", result.minimizer[1])
 println("Average equation of state w = ", mean(EoS))
 
 plot(plot1, plot2, layout=(2, 1), legend=:bottomright, size=(1200, 800))

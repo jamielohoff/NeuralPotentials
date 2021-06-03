@@ -1,10 +1,10 @@
 using Flux, DiffEqFlux, DifferentialEquations
 using DataFrames, CSV, Plots, Statistics
-include("../MyUtils.jl")
-using .MyUtils
+include("../Qtils.jl")
+using .Qtils
 
-data, uniquez = MyUtils.loaddata(@__DIR__, "supernovae.csv", "grbs.csv")
-averagedata = MyUtils.preparedata(data,uniquez)
+data, uniquez = Qtils.loaddata(@__DIR__, "supernovae.csv", "grbs.csv")
+averagedata = Qtils.preparedata(data,uniquez)
 const H0 = 0.07 # 1 / Gyr
 const c = 306.4 # in Mpc / Gyr
 const G = 1.0 # in Mpc^3 / (Gy^2 * eV)
@@ -17,12 +17,13 @@ tspan = (0.0, 7.0)
 mu(z, d_L) = 5.0 .* log10.(abs.((1.0 .+ z) .* d_L)) .+ 25.0 # we have a +25 instead of -5 because we measure distances in Mpc
 
 # Defining the time-dependent equation of state
-w_DE = FastChain(
+w = FastChain(
     FastDense(1, 16, relu),
+    FastDense(16, 16, relu),
     FastDense(16, 1) # choose output function such that 0 < |w| < 1
 )
 
-ps = vcat(p, initial_params(w_DE))
+ps = vcat(p, initial_params(w))
 
 # 1st order ODE for Friedmann equation in terms of z
 function friedmann!(du,u,p,z)
@@ -30,14 +31,13 @@ function friedmann!(du,u,p,z)
     d_L = u[2]
     
     # p[1] = omega, p[2] = w
-    w = w_DE(z, p[2:end])[1]
-    omega_DE = (p[1])*(1+z)^(3 + 3*w)
-    du[1] = 1.5*H0^2/(H*(1+z)) * (1 + w)*omega_DE
+    w0 = w(z, p[2:end])[1]
+    omega = p[1]*(1+z)^(3 + 3*w0)
+    du[1] = 1.5*H0^2/(H*(1+z)) * (1 + w0)*omega
     du[2] = c/H
 end
 
 problem = ODEProblem(friedmann!, u0, tspan, p)
-opt = ADAM(1e-2)
 
 function predict(params)
     return Array(solve(problem, Tsit5(), p=params, saveat=uniquez))
@@ -52,10 +52,11 @@ end
 cb = function(p, l, pred)
     display(l)
     display(p[1])
-    return false # l < 47.0
+    return l < 47.0
 end
 
-@time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=1000)
+opt = ADAM(1e-2)
+@time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=500)
 
 res = solve(problem, Tsit5(), u0=u0, p=result.minimizer, saveat=uniquez)
 
@@ -70,11 +71,11 @@ plot1 = Plots.scatter(
 )
 
 plot1 = Plots.plot!(plot1, uniquez, mu(uniquez, res[2,:]), label="fit")
-EoS = map(z -> w_DE(z, result.minimizer[2:end])[1], uniquez)
+EoS = map(z -> w(z, result.minimizer[2:end])[1], uniquez)
 plot2 = Plots.plot(uniquez, EoS, title="Equation of State w", xlabel="redshift z", ylabel="equation of state w")
 
 println("Cosmological parameters: ")
-println("Initial omega+ = ", result.minimizer[1])
+println("Initial Ω = ", result.minimizer[1])
 println("Average equation of state w = ", mean(EoS))
 
 plot(plot1, plot2, layout=(2, 1), legend=:bottomright, size=(1200, 800))

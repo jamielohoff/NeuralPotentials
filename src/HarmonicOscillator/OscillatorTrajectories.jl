@@ -1,7 +1,7 @@
 using DifferentialEquations, Flux, DiffEqFlux, Zygote
 using Plots, LinearAlgebra, Statistics, ProgressBars, Printf
-include("../MyUtils.jl")
-using .MyUtils
+include("../Qtils.jl")
+using .Qtils
 
 ### Creation of synthethetic data---------------------- #
 const omega = 1.0f0
@@ -23,7 +23,7 @@ function oscillator!(du, u, p, t)
 end
 
 initialConditions = hcat(2pi .* (rand(Float32, (64, 1)) .- 0.5f0), zeros(64))
-@time trajectories = MyUtils.sampletrajectories(oscillator!, true_p, initialConditions, t)
+@time trajectories = Qtils.sampletrajectories(oscillator!, true_p, initialConditions, t)
 
 ### End ------------------------------------------------ #
 

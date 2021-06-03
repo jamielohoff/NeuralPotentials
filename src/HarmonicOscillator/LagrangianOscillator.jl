@@ -1,7 +1,7 @@
 using DifferentialEquations, Flux, DiffEqFlux, ReverseDiff, ForwardDiff
 using Plots, LinearAlgebra, Statistics
-include("../MyUtils.jl")
-using .MyUtils
+include("../Qtils.jl")
+using .Qtils
 
 ### Creation of synthethetic data---------------------- #
 const omega = 1.0f0
@@ -15,8 +15,8 @@ L0(x,p) = 0.5f0*(-(p[1]*x[1])^2 + x[2]^2/p[2])
 
 function _lagrangian_forward(model, x, p) # ::DiffEqFlux.FastChain
     n = size(x, 1) ÷ 2
-    @showgrad grad = ForwardDiff.gradient(x -> sum(model(x, p)), x)
-    hessian = ForwardDiff.hessian(x -> sum(model(x, p)), x)
+    grad = ForwardDiff.gradient(x -> model(x, p)[1], x)
+    hessian = ForwardDiff.hessian(x -> model(x, p[1]), x)
     result = nothing
     if det(hessian) == 0.0
         result = [1.0 0.0; 0.0 1.0]

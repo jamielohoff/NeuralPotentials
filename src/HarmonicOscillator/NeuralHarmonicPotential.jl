@@ -1,15 +1,13 @@
 using DifferentialEquations, Flux, DiffEqFlux, Zygote
 using Plots, LinearAlgebra, Statistics
-include("../MyUtils.jl")
-using .MyUtils
+include("../Qtils.jl")
+using .Qtils
 
 ### Creation of synthethetic data---------------------- #
-omega = 1.0f0
-beta = 0.0f0
 tspan = (0.0f0, 5.0f0)
 t = Array(range(tspan[1], tspan[2], length=256))
 u0 = [3.0f0, 0.0f0] # contains x0 and dx0
-p = [omega, beta]
+p = [1.0f0, 0.0f0]
 
 V0(x,p) = p[1]*x^2 # 
 dV0(x,p) = Flux.gradient(x -> V0(x,p)[1], x)[1]
@@ -66,7 +64,7 @@ cb = function(p,l,pred)
 
     # Plotting the potential
     x0 = Array(range(-u0[1], u0[1], step=0.01))
-    y0 = map(x -> MyUtils.integrateNN(dV, x, p[3:end]), x0)
+    y0 = map(x -> Qtils.integrateNN(dV, x, p[3:end]), x0)
     z0 = map(x -> V0(x,[omega,beta]), x0)
     pot_plot = plot(x0, y0)
     pot_plot = plot!(pot_plot, x0, z0, ylims=(-0.25,3.5), xlims=(-u0[1],u0[1]))

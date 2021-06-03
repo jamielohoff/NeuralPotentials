@@ -1,7 +1,9 @@
 using Flux, DiffEqFlux, DifferentialEquations, QuadGK
 using DataFrames, CSV, Plots
+include("../Qtils.jl")
+using .Qtils
 
-data, uniquez = MyUtils.loaddata(@__DIR__, "supernovae.csv", "grbs.csv")
+data, uniquez = Qtils.loaddata(@__DIR__, "supernovae.csv", "grbs.csv")
 
 const H0 = 0.069 # 1 / Gyr
 const c = 306.4 # in Mpc / Gyr

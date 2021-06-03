@@ -1,7 +1,7 @@
 using DifferentialEquations, DiffEqFlux, Flux, Zygote
 using Plots, Statistics, LinearAlgebra
-include("../MyUtils.jl")
-using .MyUtils
+include("../Qtils.jl")
+using .Qtils
 
 ### Earth-Sun System ###
 
@@ -34,7 +34,7 @@ function kepler!(du, u, p, t)
 end
 
 initialConditions = rand(Float32, (64, 2))
-@time trajectories = MyUtils.sampletrajectories(kepler!, true_p, initialConditions, phi)
+@time trajectories = Qtils.sampletrajectories(kepler!, true_p, initialConditions, phi)
 
 ### End -------------------------------------------------- #
 

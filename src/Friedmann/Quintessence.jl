@@ -1,7 +1,9 @@
 using Flux, DiffEqFlux, DifferentialEquations
 using DataFrames, CSV, Plots
+include("../Qtils.jl")
+using Qtils
 
-data, uniquez = MyUtils.loaddata(@__DIR__, "supernovae.csv", "grbs.csv")
+data, uniquez = Qtils.loaddata(@__DIR__, "supernovae.csv", "grbs.csv")
 averagedata = preparedata(data)
 
 const H0 = 0.069 # 1 / Gyr
@@ -71,7 +73,7 @@ plot1 = Plots.scatter(
 
 plot1 = Plots.plot!(plot1, uniquez, mu(uniquez, res[4,:]), label="fit")
 pot = map(x -> V(x, result.minimizer[6:end])[1], res[2,:])
-EoS = MyUtils.calculateEOS(pot, res[3,:])
+EoS = Qtils.calculateEOS(pot, res[3,:])
 plot2 = Plots.plot(uniquez, EoS, title="Equation of State")
 plot3 = Plots.plot(res[2,:], pot, title="Potential")
 

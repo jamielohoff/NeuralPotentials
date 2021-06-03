@@ -1,7 +1,4 @@
-using DifferentialEquations
-using Plots
-using Flux
-using DiffEqFlux
+using DifferentialEquations, Plots, Flux, DiffEqFlux
 
 c = 63241 # AU per year
 G = 39.478 # gravitational constant in new units : AU^3 * yr^-2 * M^-1
