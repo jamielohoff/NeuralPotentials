@@ -8,10 +8,9 @@ averagedata = Qtils.preparedata(data,uniquez)
 const H0 = 0.07 # 1 / Gyr
 const c = 306.4 # in Mpc / Gyr
 const G = 1.0 # in Mpc^3 / (Gy^2 * eV)
-const rho_c_0 = 3*H0^2/(8pi*G) # Definition of the critical density
 
-p = 0.25 .+  0.75 .* rand(Float32, 1)
-u0 = [H0, 0.0]
+p = rand(Float32, 1)
+u0 = vcat(p, [H0, 0.0])
 tspan = (0.0, 7.0)
 
 mu(z, d_L) = 5.0 .* log10.(abs.((1.0 .+ z) .* d_L)) .+ 25.0 # we have a +25 instead of -5 because we measure distances in Mpc
@@ -19,39 +18,37 @@ mu(z, d_L) = 5.0 .* log10.(abs.((1.0 .+ z) .* d_L)) .+ 25.0 # we have a +25 inst
 # Defining the time-dependent equation of state
 w = FastChain(
     FastDense(1, 16, relu),
-    FastDense(16, 16, relu),
-    FastDense(16, 1) # choose output function such that 0 < |w| < 1
+    FastDense(16, 1, sigmoid) # choose output function such that 0 < |w| < 1
 )
 
 ps = vcat(p, initial_params(w))
 
 # 1st order ODE for Friedmann equation in terms of z
 function friedmann!(du,u,p,z)
-    H = u[1]
-    d_L = u[2]
+    Ω = u[1]
+    H = u[2]
+    d_L = u[3]
     
-    # p[1] = omega, p[2] = w
-    w0 = w(z, p[2:end])[1]
-    omega = p[1]*(1+z)^(3 + 3*w0)
-    du[1] = 1.5*H0^2/(H*(1+z)) * (1 + w0)*omega
-    du[2] = c/H
+    du[1] = (1 - w(z, p)[1])/(1+z) * Ω
+    du[2] = 1.5*H0^2/(H*(1+z)) * (1 - w(z, p)[1])*Ω
+    du[3] = c/H
 end
 
 problem = ODEProblem(friedmann!, u0, tspan, p)
 
 function predict(params)
-    return Array(solve(problem, Tsit5(), p=params, saveat=uniquez))
+    return Array(solve(problem, Tsit5(), u0=[params[1],H0,0.0], p=params[2:end], saveat=uniquez))
 end
 
 function loss(params)
     pred = predict(params)
-    µ = mu(uniquez, pred[2,:])
+    µ = mu(uniquez, pred[3,:])
     return sum(abs2, µ .- averagedata.mu), pred
 end
 
 cb = function(p, l, pred)
-    display(l)
-    display(p[1])
+    println("Loss: ", l)
+    println("Parameters: ", p[1])
     return l < 47.0
 end
 
@@ -70,7 +67,7 @@ plot1 = Plots.scatter(
             legend=:bottomright
 )
 
-plot1 = Plots.plot!(plot1, uniquez, mu(uniquez, res[2,:]), label="fit")
+plot1 = Plots.plot!(plot1, uniquez, mu(uniquez, res[3,:]), label="fit")
 EoS = map(z -> w(z, result.minimizer[2:end])[1], uniquez)
 plot2 = Plots.plot(uniquez, EoS, title="Equation of State w", xlabel="redshift z", ylabel="equation of state w")
 

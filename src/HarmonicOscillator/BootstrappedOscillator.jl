@@ -66,7 +66,7 @@ end
 
 ### Bootstrap Loop
 itmlist = DataFrame(params = Array[], potential = Array[], trajectories = Array[])
-repetitions = 4
+repetitions = 64
 
 x0 = Array(range(-u0[1], u0[1], step=0.05))
 y0 = map(x -> V0(x,p), x0)
@@ -82,7 +82,7 @@ lk = ReentrantLock()
     otherparams = rand(Float32, 2) .+ [1.5, 0.0] # contains u0, du0
     params = vcat(otherparams, initial_params(dV))
 
-    @time mytrain!(sampledata, loss, params, opt, cb, epochs=5)
+    @time mytrain!(sampledata, loss, params, opt, cb, epochs=500)
 
     result = Array(solve(prob, Tsit5(), u0=params[1:2], p=params[3:end], saveat=t0))[1,:]
     potential = map(x -> Qtils.integrateNN(dV, x, params[3:end]), x0)
