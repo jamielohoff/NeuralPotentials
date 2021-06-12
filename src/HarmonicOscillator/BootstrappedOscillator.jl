@@ -48,8 +48,6 @@ cb = function(p,l,pred)
     return l < 0.05
 end
 
-opt = ADAM(0.1)
-
 function mytrain!(sampledata, loss, params, opt, cb; epochs=1000)
     for epoch in 1:epochs
         # println("epoch: ", epoch, " of ", epochs)
@@ -66,7 +64,7 @@ end
 
 ### Bootstrap Loop
 itmlist = DataFrame(params = Array[], potential = Array[], trajectories = Array[])
-repetitions = 64
+repetitions = 4
 
 x0 = Array(range(-u0[1], u0[1], step=0.05))
 y0 = map(x -> V0(x,p), x0)
@@ -77,12 +75,12 @@ println("Beginning Bootstrap...")
 lk = ReentrantLock()
 @time Threads.@threads for rep in 1:repetitions
     sampledata = Qtils.sample(fulldata, 0.5)
-    println(size(sampledata))
 
     otherparams = rand(Float32, 2) .+ [1.5, 0.0] # contains u0, du0
     params = vcat(otherparams, initial_params(dV))
 
-    @time mytrain!(sampledata, loss, params, opt, cb, epochs=500)
+    opt = ADAM(0.1)
+    @time mytrain!(sampledata, loss, params, opt, cb, epochs=5)
 
     result = Array(solve(prob, Tsit5(), u0=params[1:2], p=params[3:end], saveat=t0))[1,:]
     potential = map(x -> Qtils.integrateNN(dV, x, params[3:end]), x0)

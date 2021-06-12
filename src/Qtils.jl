@@ -3,6 +3,7 @@ module Qtils
 # and one output neuron.
 # Also contains other helper functions for the Master thesis project.
 
+using Flux: stack
 using Flux, DiffEqFlux, QuadGK, DifferentialEquations
 using DataFrames, CSV, Statistics, LinearAlgebra, Random
 
@@ -63,17 +64,18 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
     # function to calculate the reduced χ² statistical measure 
     # for a given model prediction, groundtruth and variance/error 
     function reducedchisquared(model::AbstractArray, data::DataFrame)
-        return sum(abs2, (model .- data.mu) ./ data.me)
+        return sum(abs2, (model .- data.mu) ./ (data.me).^2) ./ (nrow(data))
     end
 
-    # function to calculate the equation of state depending on the redshift
+    # Function to calculate the equation of state depending on the redshift
     # of a quintessence model with one scalar field
-    function calculateEOS(pot::AbstractArray, dphi::AbstractArray)
-        return (dphi.^2 .- 2 .* pot) ./ (dphi.^2 .+ 2 .* pot)
+    function calculateEOS(V::AbstractArray, dϕ::AbstractArray)
+        return (dϕ.^2 .- 2 .* V) ./ (dϕ.^2 .+ 2 .* V)
     end
 
-    function calculateslowroll(NN::FastChain, p::AbstractArray, range::AbstractArray, G::Real)
-        κ_squared = 8*pi*G
+    # Function to check if the slow roll conditions are satisfied
+    function slowrollsatisfied(NN::FastChain, p::AbstractArray, range::AbstractArray, G::Real; threshold = 0.01, verbose=false)
+        κ_squared = 8*pi
         dV = map(x -> NN(x, p)[1], range)
         dNN(x) = Flux.gradient(x -> NN(x,p)[1], x)[1]
         ddV = map(x -> dNN(x)[1], range)
@@ -82,7 +84,29 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
         ϵ = 1/(2*κ_squared) .* (dV./V).^2
         η = 1/κ_squared .* (ddV ./ V)
 
-        return ϵ, η
+        if verbose
+            println(ϵ, η)
+        end
+
+        return !any(x -> x > threshold, ϵ), !any(x -> x > threshold, η)
+    end
+
+    # Function to check if the slow roll conditions are satisfied
+    function slowrollsatisfied(F, dF, p::AbstractArray, range::AbstractArray, G::Real; threshold=0.01, verbose=false)
+        κ_squared = 8*pi*G
+        dV = map(x -> dF(x, p), range)
+        ddF(x) = Flux.gradient(x -> dF(x,p)[1], x)[1]
+        ddV = map(x -> ddF(x), range)
+        V = map(x -> F(x, p), range)
+
+        ϵ = 1/(2*κ_squared) .* (dV./V).^2
+        η = 1/κ_squared .* (ddV ./ V)
+
+        if verbose
+            println(ϵ, η)
+        end
+
+        return !any(x -> x > threshold, ϵ), !any(x -> x > threshold, η)
     end
 
     """
@@ -124,6 +148,39 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
             plot!(plotobject, range, entry)
         end
         return plotobject
+    end
+
+    """
+    Function that calculates the per-row quantiles of a stacked dataframe of 
+    different bootstrap experiments
+    """
+    function quantiles(datastack; bounds=[0.025, 0.975])
+        itm = datastack[1]
+        for i in 2:size(datastack,1)
+            itm = hcat(itm, datastack[i])
+        end
+        qtl = Float64[0,0]
+        for j in 1:size(itm, 1)
+            qtl = hcat(qtl, quantile(itm[j,:], bounds))
+        end
+        return qtl[:,2:end]
+    end
+
+    """
+    Function to calculate the row-like statistics of a field of a dataframe.
+    It returns the rowlike mean, standard deviation and 5% confidence intervals.
+    """
+    function calculatestatistics(field)
+        μ = mean(field)
+        σ = stdm(field, μ)
+
+        qtls = quantiles(field)
+
+        lower_CI = qtls[1,:] - μ
+        upper_CI = qtls[2,:] - μ
+
+        return μ, σ, [lower_CI, upper_CI]
+
     end
 end
 
