@@ -11,8 +11,8 @@ const c = 306.4 # in Mpc / Gyr
 const G = 4.475e-53 # in Mpc^3 / (Gyr^2 * planck mass)
 
 # we cannot vary the initial conditions much, otherwise we get inconsistent results!!!
-p = [10.0, 0.0] #, 0.3] # rand(Float32, 3)
-u0 = vcat(p[1:2], [1.0, 0.0]) # [phi, dphi, H, d_L]
+p = [10.0, 0.0]
+u0 = vcat(p[1:2], [1.0, 0.0])
 tspan = (0.0, 7.0)
 
 # Function to calculate the distance modulus
@@ -35,16 +35,14 @@ params = vcat(p, initial_params(V))
 function friedmann!(du,u,p,z)
     Q = u[1]
     dQ = u[2]
-    # Ω_m = u[3]
     E = u[3]
     d_L = u[4]
     
-    Ω_m = 1 - 8pi/3 * (0.5*dQ^2 .+ V(Q,p)[1])/E^2 # Ω_ϕ(dQ, E, V(Q,p)[1])
+    Ω_m = 1 - 8pi/3 * (0.5*dQ^2 .+ V(Q,p)[1])/E^2
     dE = 1.5*E/(1+z)*(Ω_m + 8pi/3 * ((1+z)*dQ)^2)
 
     du[1] = dQ
     du[2] = (2/(1+z) - dE/E) * dQ - dV(Q, p)[1]/(E*(1+z))^2
-    # du[3] = (3/(1+z) - 2*dE/E) * Ω_m
     du[3] = dE
     du[4] = 1/E
 end
