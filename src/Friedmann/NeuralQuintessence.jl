@@ -1,4 +1,4 @@
-using Flux, DiffEqFlux, DifferentialEquations
+using Flux, DiffEqFlux, DifferentialEquations, Zygote
 using DataFrames, Plots, LinearAlgebra, Statistics
 include("../Qtils.jl")
 using .Qtils
@@ -13,8 +13,14 @@ const G = 4.475e-53 # in Mpc^3 / (Gyr^2 * planck mass)
 # we cannot vary the initial conditions much, otherwise we get inconsistent results!!!
 p = [10.0, 0.0]
 u0 = vcat(p[1:2], [1.0, 0.0])
-tspan = (0.0, 7.0)
-
+zspan = (0.0, 7.0)
+zrange = Array(range(zspan[1], zspan[2], step=0.01))
+zlist = sort(vcat(uniquez, zrange))
+idx = []
+for z in uniquez
+    push!(idx, findall(x->x==z,zlist)[1])
+end
+println(idx)
 # Function to calculate the distance modulus
 # we have a +25 instead of -5 because we measure distances in Mpc
 mu(z, d_L) = 5.0 .* log10.((c/H0) * abs.((1.0 .+ z) .* d_L)) .+ 25.0 
@@ -47,16 +53,16 @@ function friedmann!(du,u,p,z)
     du[4] = 1/E
 end
 
-problem = ODEProblem(friedmann!, u0, tspan, p)
+problem = ODEProblem(friedmann!, u0, zspan, p)
 opt = ADAM(0.01)
 
 function predict(params)
-    return Array(solve(problem, Tsit5(), u0=vcat(params[1:2],[1.0, 0.0]), p=params[3:end], saveat=uniquez))
+    return Array(solve(problem, Tsit5(), u0=vcat(params[1:2],[1.0, 0.0]), p=params[3:end], saveat=zlist))
 end
 
 function loss(params)
     pred = predict(params)
-    µ = mu(uniquez, pred[end,:])
+    µ = mu(uniquez, pred[end,idx])
     return sum(abs2, µ .- averagedata.mu), pred
 end
 
@@ -83,7 +89,7 @@ plot1 = Plots.scatter(
 plot1 = Plots.plot!(plot1, uniquez, mu(uniquez, res[end,:]), label="fit")
 potential = map(q -> V(q, result.minimizer[3:end])[1], res[1,:])
 EoS = Qtils.calculateEOS(potential, res[2,:])
-#slowroll = Qtils.slowrollsatisfied(dV, result.minimizer[4:end], res[1,:], G, verbose=true)
+#slowroll = Qtils.slowrollsatisfied(dV, result.minimizer[3:end], res[1,:], G, verbose=true)
 #println("Slowroll conditions satisfied: ", slowroll)
 plot2 = Plots.plot(uniquez, EoS, title="Equation of State", xlabel="redshift z", ylabel="equation of state w", legend=:topright)
 plot3 = Plots.plot(res[1,:], potential, title="Potential", xlabel="quintessence field ϕ", ylabel="V(ϕ)", legend=:bottomright)
@@ -94,8 +100,8 @@ println("Cosmological parameters: ")
 println("Mass parameter Ω_m = ", 1 - Ω_ϕ(res[2,:], res[3,:], potential)[1])
 println("Initial conditions for quintessence field = ", result.minimizer[1:2])
 
-#m_ϕ = Flux.gradient(Q -> dV(Q, result.minimizer[3:end])[1], 0)[1][1]
-#println("Mass of the scalar field = ", m_ϕ)
+m_ϕ =  Zygote.hessian(Q -> V(Q, result.minimizer[3:end])[1], 0)[1]
+println("Mass of the scalar field = ", m_ϕ)
 
 resultplot = Plots.plot(plot1, plot2, plot3, plot4, layout=(2, 2), size=(1200, 800))
 Plots.plot(resultplot)
