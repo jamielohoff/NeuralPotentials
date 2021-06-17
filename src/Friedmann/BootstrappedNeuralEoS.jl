@@ -47,19 +47,18 @@ end
 function loss(params)
     pred = predict(params)
     µ = mu(uniquez, pred[3,:])
-    return sum(abs2, µ .- averagedata.mu), pred
-    # return Qtils.reducedchisquared(µ, averagedata), pred
+    return Qtils.reducedchisquared(μ, averagedata, size(params,1)), pred
 end
 
 cb = function(p, l, pred)
     # display(l)
     # display(p[1])
-    return l < 47.0
+    return l < 1.20
 end
 
 ### Bootstrap Loop
 itmlist = DataFrame(params = Array[], Ω = Array[], d_L = Array[], EoS = Array[])
-repetitions = 64
+repetitions = 16
 
 dplot = scatter(
             data.z, data.my, 
@@ -79,7 +78,7 @@ lk = ReentrantLock()
     p = 0.25 .+  0.75 .* rand(Float32, 1)
     params = vcat(p, initial_params(w_DE))
     opt = ADAM(1e-2)
-    @time result =  DiffEqFlux.sciml_train(loss, params, opt, cb=cb, maxiters=5)
+    @time result =  DiffEqFlux.sciml_train(loss, params, opt, cb=cb, maxiters=500)
 
     u0 = [result.minimizer[1], H0, 0.0]
     res = solve(problem, Tsit5(), u0=u0, p=result.minimizer[2:end], saveat=uniquez)
@@ -89,7 +88,7 @@ lk = ReentrantLock()
     lock(lk)
     push!(itmlist, [[result.minimizer[1]], res[1,:], mu(uniquez,res[3,:]), EoS])
     unlock(lk)
-    println("Done!")
+    println("Repetition ", rep, " is done!")
 end
 println("Bootstrap complete!")
 
@@ -116,6 +115,9 @@ EoS_plot = plot(uniquez, mean_EoS, ribbon=CI_EoS,
                 xlabel="redshift z", 
                 ylabel="density parameter Ω", 
                 label="Ω_m"
+)
+Ω_plot = plot!(Ω_plot, uniquez, 1 .- mean_Ω, 
+                label="Ω_Λ"
 )
 plot(dplot, EoS_plot, Ω_plot, layout=(3,1), size=(1200, 800))
 

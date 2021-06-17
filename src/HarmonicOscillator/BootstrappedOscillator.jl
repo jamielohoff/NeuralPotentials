@@ -1,4 +1,4 @@
-using Zygote: Array
+using Zygote: Array, Threads
 using DifferentialEquations, Flux, DiffEqFlux, Zygote
 using Plots, LinearAlgebra, Statistics, DataFrames, CSV
 include("../Qtils.jl")
@@ -7,20 +7,20 @@ using .Qtils
 using .MechanicsDatasets
 
 ### Creation of synthethetic data---------------------- #
-tspan = (0.0f0, 5.0f0)
+tspan = (0.0, 5.0)
 t0 = Array(range(tspan[1], tspan[2], length=256))
-u0 = [3.0f0, 0.0f0] # contains x0 and dx0
-p = [1.0f0, 0.1f0]
+u0 = [3.0, 0.0] # contains x0 and dx0
+p = [1.0, 0.1]
 
 # Define potential and get dataset
 V0(x,p) = p[1]*x^2 
-fulldata = MechanicsDatasets.potentialproblem(V0, u0, p, t0, addnoise=true, noisescale=0.2f0)
+fulldata = MechanicsDatasets.potentialproblem(V0, u0, p, t0, addnoise=true, σ=0.2)
 ### End ------------------------------------------------ #
 
 # Defining the gradient of the potential
 dV = FastChain(
-    FastDense(1, 16, relu), 
-    FastDense(16, 1)
+    FastDense(1, 8, relu), 
+    FastDense(8, 1)
 )
 
 # Define ODE for our system
@@ -29,7 +29,7 @@ function neuraloscillator!(du, u, p, t)
     dx = u[2]
 
     du[1] = dx
-    du[2] = -dV(x,p)[1]
+    du[2] = -dV(x, p)[1]
 end
 
 prob = ODEProblem(neuraloscillator!, u0, tspan, p)
@@ -40,90 +40,78 @@ end
 
 function loss(params, sampledata)
     pred = predict(params, sampledata[1,:])
-    return mean((pred .- sampledata[2:3,:]).^2), pred
+    return sum(abs2, (pred .- sampledata[2:3,:])./0.2) / (size(sampledata, 2) - size(params, 1)), pred
 end
 
 cb = function(p,l,pred)
     println("Loss at thread ", Threads.threadid(), " : ", l)
-    return l < 0.05
+    println("Params at thread ", Threads.threadid(), " : ", p[1:2])
+    # display(scatter(pred[1,:]))
+    return l < 1.1
 end
 
 function mytrain!(sampledata, loss, params, opt, cb; epochs=1000)
     for epoch in 1:epochs
-        # println("epoch: ", epoch, " of ", epochs)
+        println("epoch: ", epoch, " of ", epochs)
         _loss, _pred = loss(params, sampledata)
         grads = Flux.gradient(p -> loss(p, sampledata)[1], params)[1]
         Flux.update!(opt, params, grads)
 
-        breakCondition = cb(params, _loss, _pred)
-        if breakCondition
+        if cb(params, _loss, _pred)
             break
         end
     end
 end
 
-### Bootstrap Loop
-itmlist = DataFrame(params = Array[], potential = Array[], trajectories = Array[])
-repetitions = 4
+sampledata = Qtils.sample(fulldata, 0.5)
+plot(sampledata[1,:], sampledata[2,:])
+otherparams = rand(Float32, 2) .+ [1.5, 0.0] # contains u0, du0
+ps = vcat(otherparams, initial_params(dV))
 
-x0 = Array(range(-u0[1], u0[1], step=0.05))
-y0 = map(x -> V0(x,p), x0)
-traj_plot = scatter(t0, fulldata[2,:])
-pot_plot = plot(x0, y0)
+opt = ADAM(0.1)
+@time mytrain!(sampledata, loss, ps, opt, cb, epochs=300)
 
-println("Beginning Bootstrap...")
-lk = ReentrantLock()
-@time Threads.@threads for rep in 1:repetitions
-    sampledata = Qtils.sample(fulldata, 0.5)
+### Bootstrap Loop ----------------------------------------------------- #
+# itmlist = DataFrame(params = Array[], potential = Array[], trajectories = Array[])
+# repetitions = 1
 
-    otherparams = rand(Float32, 2) .+ [1.5, 0.0] # contains u0, du0
-    params = vcat(otherparams, initial_params(dV))
+# x0 = Array(range(-u0[1], u0[1], step=0.05))
+# true_potential = map(x -> V0(x, p), x0)
+# traj_plot = scatter(t0, fulldata[2,:])
+# pot_plot = plot(x0, true_potential)
 
-    opt = ADAM(0.1)
-    @time mytrain!(sampledata, loss, params, opt, cb, epochs=5)
+# println("Beginning Bootstrap...")
+# lk = ReentrantLock()
+# opt = ADAM(0.1)
+# @time Threads.@threads for rep in 1:repetitions
+#     sampledata = Qtils.sample(fulldata, 0.9)
 
-    result = Array(solve(prob, Tsit5(), u0=params[1:2], p=params[3:end], saveat=t0))[1,:]
-    potential = map(x -> Qtils.integrateNN(dV, x, params[3:end]), x0)
+#     display(scatter(sampledata[1,:], sampledata[2,:]))
 
-    lock(lk)
-    push!(itmlist, [params[1:2], potential, result])
-    unlock(lk)
-end
-println("Bootstrap complete!")
+#     otherparams = rand(Float32, 2) .+ [1.5, 0.0] # contains u0, du0
+#     ps = vcat(otherparams, initial_params(dV))
 
-# CSV.write(joinpath(@__DIR__, "Bootstrap.CSV"), itmlist)
+#     @time mytrain!(sampledata, loss, ps, opt, cb, epochs=300)
 
-mean_params = mean(itmlist.params)
-std_params = stdm(itmlist.params, mean_params)
-println("parameter mean: ", mean_params, "±", std_params)
+#     result = Array(solve(prob, Tsit5(), u0=ps[1:2], p=ps[3:end], saveat=t0))
+#     potential = map(x -> Qtils.integrateNN(dV, x, ps[3:end]), x0)
 
-mean_traj = mean(itmlist.trajectories)
-mean_pot = mean(itmlist.potential)
+#     lock(lk)
+#     push!(itmlist, [ps[1:2], potential, result[1,:]])
+#     unlock(lk)
+#     println("Repetition ", rep, " is done!")
+# end
+# println("Bootstrap complete!")
 
-std_traj = stdm(itmlist.trajectories, mean_traj)
-std_pot = stdm(itmlist.potential, mean_pot)
+# # CSV.write(joinpath(@__DIR__, "Bootstrap.CSV"), itmlist)
 
-function quantiles(arr)
-    catet = arr[1]
-    for i in 2:size(arr,1)
-        catet = hcat(catet, arr[i])
-    end
-    quant = Float64[0,0]
-    for j in 1:size(catet, 1)
-        quant = hcat(quant, quantile(catet[j,:], [0.025, 0.975]))
-    end
-    return quant[:,2:end]
-end
-quantile_traj = quantiles(itmlist.trajectories)
-quantile_pot = quantiles(itmlist.potential)
+# mean_params, std_params, CI_params = Qtils.calculatestatistics(itmlist.params)
+# mean_traj, std_traj, CI_traj = Qtils.calculatestatistics(itmlist.trajectories)
+# mean_pot, std_pot, CI_pot = Qtils.calculatestatistics(itmlist.potential)
 
-lower_CI_traj = quantile_traj[1,:] - mean_traj
-upper_CI_traj = quantile_traj[2,:] - mean_traj
-lower_CI_pot = quantile_pot[1,:] - mean_pot
-upper_CI_pot = quantile_pot[2,:] - mean_pot
+# println("parameter mean: ", mean_params, "±", std_params)
 
-traj_plot = plot!(traj_plot, t0, mean_traj, ribbon=[lower_CI_traj, upper_CI_traj]) # std_traj)
-pot_plot = plot!(pot_plot, x0, mean_pot, ribbon=[lower_CI_pot, upper_CI_pot])# std_pot)
-resultplot = plot(traj_plot, pot_plot, layout=(2,1), size=(1200, 800))
-display(plot(resultplot))
+# traj_plot = plot!(traj_plot, t0, mean_traj, ribbon=CI_traj)
+# pot_plot = plot!(pot_plot, x0, mean_pot, ribbon=CI_pot)
+# resultplot = plot(traj_plot, pot_plot, layout=(2,1), size=(1200, 800))
 

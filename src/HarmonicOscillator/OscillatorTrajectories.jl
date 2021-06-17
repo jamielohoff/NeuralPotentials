@@ -62,7 +62,7 @@ cb = function(p,l,pred,gt)
 
     # Plotting the potential
     x0 = Array(range(-3.25, 3.25, step=0.01))
-    y0 = map(x -> MyUtils.integrateNN(dV, x, p), x0)
+    y0 = map(x -> Qtils.integrateNN(dV, x, p), x0)
     z0 = map(x -> V0(x,[omega,beta]), x0)
     pot_plot = plot(x0, y0)
     pot_plot = plot!(pot_plot, x0, z0, ylims=(-0.25,3.5), xlims=(-3.25,3.25))

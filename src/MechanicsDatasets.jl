@@ -1,6 +1,6 @@
 module MechanicsDatasets
 
-    using DifferentialEquations, Flux, DiffEqFlux
+    using DifferentialEquations, Flux, DiffEqFlux, Distributions
     """
     Function that solves the 1-dimensional 2nd order ODE for a given potential V
     """
@@ -9,7 +9,7 @@ module MechanicsDatasets
         p::AbstractArray, 
         t::Array; 
         addnoise=false, 
-        noisescale=0.01f0)
+        σ=0.01)
         dV(x,p) = Flux.gradient(x -> V(x,p)[1], x)[1]
 
         function potentialODE!(du, u, p, t)
@@ -24,7 +24,8 @@ module MechanicsDatasets
         solution = solve(problem, Tsit5(), saveat=t)
 
         if addnoise
-            noise =  noisescale * randn(Float32, size(solution)) # add normally distributed noise
+            pdf = Normal(0.0, σ)
+            noise =  rand(pdf, size(solution)) # add normally distributed noise
             data = solution[1:2,:] .+ noise
         end
         return vcat(reshape(t,1,:),data)
@@ -40,5 +41,17 @@ module MechanicsDatasets
         potential::Function,
         dimensions::Array)
 
+    end
+
+    function sampletrajectories(ODE, params::Any, initialConditions::AbstractArray, t::AbstractArray)
+        tspan = (t[1], t[end])
+        trajectoryList = []
+        for i in 1:size(initialConditions)[1]
+            u0 = initialConditions[i,:]
+            problem = ODEProblem(ODE, u0, tspan, params)
+            sol = solve(problem, Tsit5(), saveat=t)
+            push!(trajectoryList, Array(sol))
+        end
+        return trajectoryList
     end
 end
