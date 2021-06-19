@@ -1,3 +1,9 @@
 # ignore file types
 *.png
+*.jpg
 
+# ignore files
+test.jl
+
+# ignore folders
+.vscode/

@@ -10,15 +10,17 @@ tspan = (0.0, 5.0)
 t0 = Array(range(tspan[1], tspan[2], length=256))
 u0 = [3.0, 0.0] # contains x0 and dx0
 p = [1.0]
+stderr = 0.2
 
 # Define potential and get dataset
 V0(x,p) = p[1]*x^2 
-data = MechanicsDatasets.potentialproblem(V0, u0, p, t0, addnoise=true, σ=0.2)
+data = MechanicsDatasets.potentialproblem(V0, u0, p, t0, addnoise=true, σ=stderr)
 ### End ------------------------------------------------ #
 
 # Defining the gradient of the potential
 dV = FastChain(
     FastDense(1, 8, relu), 
+    FastDense(8, 8, relu),
     FastDense(8, 1)
 )
 
@@ -41,13 +43,13 @@ end
 
 function loss(params)
     pred = predict(params)
-    return sum(abs2, (pred .- data[2:3,:])./0.2) / (size(data, 2) - size(params, 1)), pred
+    return sum(abs2, (pred .- data[2:3,:])./stderr) / (size(data, 2) - size(params, 1)), pred
 end
 
 cb = function(p,l,pred)
     println("Loss: ", l)
     println("Parameters: ", p[1:2])
-    return l < 0.05
+    return l < 1.05
 end
 
 opt = ADAM(0.1)

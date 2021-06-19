@@ -4,7 +4,6 @@ include("../Qtils.jl")
 using .Qtils
 
 data, uniquez = Qtils.loaddata(@__DIR__, "supernovae.csv", "grbs.csv")
-averagedata = Qtils.preparedata(data, uniquez)
 
 const H0 = 0.07 # 1 / Gyr
 const c = 306.4 # in Mpc / Gyr
@@ -45,26 +44,26 @@ end
 
 problem = ODEProblem(friedmann!, u0, tspan, p)
 
-function predict(params)
+function predict(params, z)
     u0 = vcat(params[1:2],[1.0, 0.0])
-    return Array(solve(problem, Tsit5(), u0=u0, p=params[3:end], saveat=uniquez))
+    return Array(solve(problem, Tsit5(), u0=u0, p=params[3:end], saveat=z))
 end
 
-function loss(params)
-    pred = predict(params)
-    µ = mu(uniquez, pred[end,:])
-    return Qtils.reducedchisquared(μ, averagedata, size(params,1)), pred
+function loss(params, sampledata)
+    pred = predict(params, sampledata.z)
+    µ = mu(sampledata.z, pred[end,:])
+    return Qtils.reducedchisquared(μ, sampledata, size(params,1)), pred
 end
 
 cb = function(p, l, pred)
-    # println("Loss: ", l)
-    # println("Parameters: ", p[1:2])
-    return l < 1.20
+    println("Loss: ", l)
+    println("Parameters: ", p[1:2])
+    return l < 1.10
 end
 
 ### Bootstrap Loop
 itmlist = DataFrame(params = Array[], Q = Array[], Ω_ϕ = Array[], d_L = Array[], EoS = Array[], potential = Array[])
-repetitions = 8
+repetitions = 1
 
 dplot = scatter(
             data.z, data.my, 
@@ -79,18 +78,19 @@ dplot = scatter(
 println("Beginning Bootstrap...")
 lk = ReentrantLock()
 @time Threads.@threads for rep in 1:repetitions
-    sampledata = Qtils.sample(averagedata, 0.5)
+    sampledata = Qtils.elaboratesample(data, uniquez, 0.5)
 
     p = [3.0f0, 0.0f0]
     ps = vcat(p, initial_params(V))
     opt = ADAM(1e-2)
-    @time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=500)
+    # @time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=500)
+    @time Qtils.bootstraptrain!(sampledata, loss, ps, opt, cb, maxiters=300)
 
-    u0 = vcat(result.minimizer[1:2], [1.0, 0.0])
-    res = solve(problem, Tsit5(), u0=u0, p=result.minimizer[3:end], saveat=uniquez)
+    u0 = vcat(ps[1:2], [1.0, 0.0])
+    res = solve(problem, Tsit5(), u0=u0, p=ps[3:end], saveat=uniquez)
 
     potential = map(q -> V(q, result.minimizer[3:end])[1], res[1,:])
-    EoS = Qtils.calculateEOS(potential, res[2,:])
+    EoS = Qtils.calculateEOS(potential, res[2,:], res[3,:], sampledata.z)
     density_ϕ = Ω_ϕ(res[2,:], res[3,:], potential)
 
     lock(lk)

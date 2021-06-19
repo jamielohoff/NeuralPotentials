@@ -5,7 +5,7 @@ the context of quintessence and supernova data.
 Also contains other helper functions for the Master thesis project.
 """
 
-using Flux, DiffEqFlux, QuadGK, DifferentialEquations
+using Flux, DiffEqFlux, QuadGK, DifferentialEquations, Zygote
 using DataFrames, CSV, Statistics, LinearAlgebra, Random
 
     """
@@ -34,8 +34,7 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
     """
     Function that can be used to integrate a neural network with one input and output node.
     A neural network like this is effectively a one-dimensional function and thus can be integrated.
-    The lower bound is 0 while the upper bounds can be specifie as an array.
-    The function then returns an array for the different values of the respective upper bounds.
+    The lower bound is 0 while the upper bounds can be specified,
 
     Arguments:
     1. `upperbound`: Array of upper bounds for the integrations.
@@ -50,8 +49,7 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
     """
     Function that can be used to integrate a neural network with one input and output node.
     A neural network like this is effectively a one-dimensional function and thus can be integrated.
-    The lower bound is 0 while the upper bounds can be specifie as an array.
-    The function then returns an array for the different values of the respective upper bounds.
+    The lower bound is 0 while the upper bounds can be specified.
 
     Arguments:
     1. `upperbound`: Array of upper bounds for the integrations.
@@ -94,7 +92,7 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
     1. `data`: The dataframe that contains the supernova and gamma ray burst data.
     2. `uniquez`: The unique instanced of redshift in the dataset.
     """
-    function preparedata(data::DataFrame, uniquez::AbstractArray)
+    function preparedata(data::AbstractDataFrame, uniquez::AbstractArray)
         averagedata = DataFrame(mu = Real[], me = Real[])
         for z in uniquez
             idx = findall(x -> x==z, data.z)
@@ -118,8 +116,7 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
     """
     function reducedchisquared(model::AbstractArray, data::DataFrame, nparams::Number)
         n = nrow(data)
-        m = size(params, 1)
-        return sum(abs2, (model .- data.mu) ./ (data.me)) ./ (n - m)
+        return sum(abs2, (model .- data.mu) ./ (data.me)) ./ (n - nparams)
     end
 
     """
@@ -149,16 +146,15 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
     5. `verbose`: If set to true, the function will print and array which contains the slow roll conditions at every point defined in range.
     """
     function slowrollsatisfied(NN::FastChain, params::AbstractArray, range::AbstractArray; threshold = 0.01, verbose=false)
-        κ_squared = 8*pi
-        dNN(Q, P) = Flux.gradient(q -> NN(q, P)[1], Q)[1]
+        dNN(Q, P) = Zygote.gradient(q -> NN(q, P)[1], Q)[1]
         ddNN(Q, P) = Zygote.hessian(q -> NN(q, P)[1], Q)[1]
-        V = map(q -> V(q, params), range)
-        dV = map(q -> dNN(q, params), range)
-        ddV = map(q -> ddNN(q, params), range)
+        V = map(q -> NN(q, params)[1], range)
+        dV = map(q -> dNN(q, params)[1], range)
+        ddV = map(q -> ddNN(q, params)[1], range)
 
         # Calculation of the slow roll parameters
-        ϵ = 1/(2*κ_squared) .* (dV./V).^2
-        η = 1/κ_squared .* (ddV ./ V)
+        ϵ = 1/(16pi) .* (dV./V).^2
+        η = 1/(8pi) .* (ddV ./ V)
 
         if verbose
             println(ϵ, η)
@@ -178,16 +174,15 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
     5. `threshold`: The threshold below which we assume the slow roll conditions to be true.
     6. `verbose`: If set to true, the function will print and array which contains the slow roll conditions at every point defined in range.
     """
-    function slowrollsatisfied(F, dF, params::AbstractArray, range::AbstractArray, G::Real; threshold=0.01, verbose=false)
-        κ_squared = 8*pi*G
+    function slowrollsatisfied(F, dF, params::AbstractArray, range::AbstractArray; threshold=0.01, verbose=false)
         dV = map(x -> dF(x, params), range)
         ddF(x) = Flux.gradient(x -> dF(x,params)[1], x)[1]
         ddV = map(x -> ddF(x), range)
         V = map(x -> F(x, params), range)
 
         # Calculation of the slow roll parameters
-        ϵ = 1/(2*κ_squared) .* (dV./V).^2
-        η = 1/κ_squared .* (ddV ./ V)
+        ϵ = 1/(16pi) .* (dV./V).^2
+        η = 1/(8pi) .* (ddV ./ V)
 
         if verbose
             println(ϵ, η)
@@ -202,11 +197,11 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
     
     Arguments:
     1. `df`: Dataframe containing the observations.
-    2. `ration`: Relative size of the sample compared to the whole population.
+    2. `ratio`: Relative size of the sample compared to the whole population.
     """
     function sample(df::AbstractDataFrame, ratio::Real)
         len = trunc(Int, nrow(df)*ratio)
-        return df[shuffle(1:nrow(df))[1:len], :]
+        return df[sort(shuffle(1:nrow(df))[1:len]), :]
     end
 
     """
@@ -214,22 +209,35 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
     from a sample and returns a ordered array.
 
     Arguments:
-    1. `df`: Dataframe containing the observations.
+    1. `arr`: Array containing the observations.
     2. `ration`: Relative size of the sample compared to the whole population.
     """
     function sample(arr::AbstractArray, ratio::Real)
         len = trunc(Int, size(arr,2)*ratio)
-        return arr[:,shuffle(1:size(arr,2))[1:len]]
+        return arr[:,sort(shuffle(1:size(arr,2))[1:len])]
     end
 
     """
-    Function to plot rows from a 2dim array for a given range.
+    Function to sample from the supernova data in such a way that for each redshift we only have
+    exactly one value for the distance modulus.
+
+    Arguments:
+    Arguments:
+    1. `data`: Dataframe containing the supernove observations.
+    2. `ratio`: Relative size of the sample compared to the whole population.
+    3. `uniquez`: The unique redshifts in the data.
     """
-    function multiplot(plotobject, range::AbstractArray, list::AbstractArray)
-        for entry in list
-            plot!(plotobject, range, entry)
+    function elaboratesample(data::AbstractDataFrame, uniquez::AbstractArray, ratio::Real)
+        # rename column :my to :mu for convenience
+        rename!(data,:my => :mu)
+        # randomly choose one of the values for multiple occurences of the same redshift
+        for z in uniquez
+            occurence = findall(x -> x == z, data.z)
+            if size(occurence, 1) > 1
+                delete!(data, sort(shuffle(occurence)[2:end]))
+            end
         end
-        return plotobject
+        return sample(data, ratio)
     end
 
     """
@@ -270,5 +278,41 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
 
         return μ, σ, [lower_CI, upper_CI]
     end
+
+    """
+    Inplace function to train NeuralODE systems. The internal workings are more or less derived from
+    the train!-function in the Flux package of Julia's SciML ecosystem.
+    However it is modified such that it allows to define the dataset we want to train on explicitly
+    via the functions parameters. This is particularly useful when we deal with bootstrapping techniques.
+
+    Arguments:
+    1. `sampledata`: Sampledata we want to train on. The first row has to contain the point where we want to save.
+    2. `loss`: Function that calculates the difference between the model and the data. Has to look like:
+    function loss(params, sampledata)
+        ...
+        return loss, prediction
+    end
+    3. `params`: Parameters of the model/neural network.
+    4. `opt`: Optimizer for the given problem. Usually, it is advised to use either RMSprop or ADAM.
+    5. `cb`: Specify the callback function here. It has to contain a rule for early stopping, and thus has to look like:
+    cb = function(params, loss, prediction)
+        ...
+        return loss < 1.05
+    end
+    6. `epochs`: Number of epochs we want the training to last. Default value is 1000.
+    """
+    function bootstraptrain!(sampledata, loss, params, opt, cb; maxiters=1000)
+        for iter in 1:maxiters
+            l, pred = loss(params, sampledata)
+            grads = Flux.gradient(p -> loss(p, sampledata)[1], params)[1]
+            Flux.update!(opt, params, grads)
+    
+            if cb(params, l, pred)
+                break # stop training, if the early-stopping rule is satisfied.
+            end
+        end
+    end
+
+
 end
 

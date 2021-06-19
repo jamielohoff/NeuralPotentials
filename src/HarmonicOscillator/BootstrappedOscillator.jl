@@ -10,19 +10,20 @@ using .MechanicsDatasets
 tspan = (0.0, 5.0)
 t0 = Array(range(tspan[1], tspan[2], length=256))
 u0 = [3.0, 0.0] # contains x0 and dx0
-p = [1.0, 0.1]
+p = [1.0]
+stderr = 0.2
 
 # Define potential and get dataset
 V0(x,p) = p[1]*x^2 
-fulldata = MechanicsDatasets.potentialproblem(V0, u0, p, t0, addnoise=true, σ=0.2)
+fulldata = MechanicsDatasets.potentialproblem(V0, u0, p, t0, addnoise=true, σ=stderr)
 ### End ------------------------------------------------ #
 
 # Defining the gradient of the potential
 dV = FastChain(
     FastDense(1, 8, relu), 
+    FastDense(8, 8, relu),
     FastDense(8, 1)
 )
-
 # Define ODE for our system
 function neuraloscillator!(du, u, p, t)
     x = u[1]
@@ -38,80 +39,63 @@ function predict(params, t)
     return Array(solve(prob, Tsit5(), u0=params[1:2], p=params[3:end], saveat=t))
 end
 
-function loss(params, sampledata)
-    pred = predict(params, sampledata[1,:])
-    return sum(abs2, (pred .- sampledata[2:3,:])./0.2) / (size(sampledata, 2) - size(params, 1)), pred
+function loss(params, data)
+    pred = predict(params, data[1,:])
+    return sum(abs2, (pred .- data[2:3,:])./stderr) / (size(data, 2) - size(params, 1)), pred
 end
 
 cb = function(p,l,pred)
     println("Loss at thread ", Threads.threadid(), " : ", l)
     println("Params at thread ", Threads.threadid(), " : ", p[1:2])
-    # display(scatter(pred[1,:]))
     return l < 1.1
 end
 
-function mytrain!(sampledata, loss, params, opt, cb; epochs=1000)
-    for epoch in 1:epochs
-        println("epoch: ", epoch, " of ", epochs)
-        _loss, _pred = loss(params, sampledata)
-        grads = Flux.gradient(p -> loss(p, sampledata)[1], params)[1]
-        Flux.update!(opt, params, grads)
+# otherparams = rand(Float32, 2) .+ [1.5, 0.0] # contains u0, du0
+# ps = vcat(otherparams, initial_params(dV))
 
-        if cb(params, _loss, _pred)
-            break
-        end
-    end
-end
+# opt = ADAM(0.1)
+# @time Qtils.bootstraptrain!(sampledata, loss, ps, opt, cb, maxiters=500)
 
-sampledata = Qtils.sample(fulldata, 0.5)
-plot(sampledata[1,:], sampledata[2,:])
-otherparams = rand(Float32, 2) .+ [1.5, 0.0] # contains u0, du0
-ps = vcat(otherparams, initial_params(dV))
-
-opt = ADAM(0.1)
-@time mytrain!(sampledata, loss, ps, opt, cb, epochs=300)
+# res = Array(solve(prob, Tsit5(), u0=ps[1:2], p=ps[3:end], saveat=fulldata[1,:]))
 
 ### Bootstrap Loop ----------------------------------------------------- #
-# itmlist = DataFrame(params = Array[], potential = Array[], trajectories = Array[])
-# repetitions = 1
+itmlist = DataFrame(params = Array[], potential = Array[], trajectories = Array[])
+repetitions = 16
 
-# x0 = Array(range(-u0[1], u0[1], step=0.05))
-# true_potential = map(x -> V0(x, p), x0)
-# traj_plot = scatter(t0, fulldata[2,:])
-# pot_plot = plot(x0, true_potential)
+x0 = Array(range(-u0[1], u0[1], step=0.05))
+true_potential = map(x -> V0(x, p), x0)
+traj_plot = scatter(fulldata[1,:], fulldata[2,:])
+pot_plot = plot(x0, true_potential)
 
-# println("Beginning Bootstrap...")
-# lk = ReentrantLock()
-# opt = ADAM(0.1)
-# @time Threads.@threads for rep in 1:repetitions
-#     sampledata = Qtils.sample(fulldata, 0.9)
+println("Beginning Bootstrap...")
+lk = ReentrantLock()
+@time Threads.@threads for rep in 1:repetitions
+    sampledata = Qtils.sample(fulldata, 0.5)
+    otherparams = rand(Float32, 2) .+ [1.5, 0.0] # contains u0, du0
+    ps = vcat(otherparams, initial_params(dV))
+    opt = ADAM(0.1)
 
-#     display(scatter(sampledata[1,:], sampledata[2,:]))
+    @time Qtils.bootstraptrain!(sampledata, loss, ps, opt, cb, maxiters=300)
 
-#     otherparams = rand(Float32, 2) .+ [1.5, 0.0] # contains u0, du0
-#     ps = vcat(otherparams, initial_params(dV))
+    result = Array(solve(prob, Tsit5(), u0=ps[1:2], p=ps[3:end], saveat=t0))
+    potential = map(x -> Qtils.integrateNN(x, dV, ps[3:end]), x0)
 
-#     @time mytrain!(sampledata, loss, ps, opt, cb, epochs=300)
+    lock(lk)
+    push!(itmlist, [ps[1:2], potential, result[1,:]])
+    unlock(lk)
+    println("Repetition ", rep, " is done!")
+end
+println("Bootstrap complete!")
 
-#     result = Array(solve(prob, Tsit5(), u0=ps[1:2], p=ps[3:end], saveat=t0))
-#     potential = map(x -> Qtils.integrateNN(dV, x, ps[3:end]), x0)
+# CSV.write(joinpath(@__DIR__, "Bootstrap.CSV"), itmlist)
 
-#     lock(lk)
-#     push!(itmlist, [ps[1:2], potential, result[1,:]])
-#     unlock(lk)
-#     println("Repetition ", rep, " is done!")
-# end
-# println("Bootstrap complete!")
+mean_params, std_params, CI_params = Qtils.calculatestatistics(itmlist.params)
+mean_traj, std_traj, CI_traj = Qtils.calculatestatistics(itmlist.trajectories)
+mean_pot, std_pot, CI_pot = Qtils.calculatestatistics(itmlist.potential)
 
-# # CSV.write(joinpath(@__DIR__, "Bootstrap.CSV"), itmlist)
+println("parameter mean: ", mean_params, "±", std_params)
 
-# mean_params, std_params, CI_params = Qtils.calculatestatistics(itmlist.params)
-# mean_traj, std_traj, CI_traj = Qtils.calculatestatistics(itmlist.trajectories)
-# mean_pot, std_pot, CI_pot = Qtils.calculatestatistics(itmlist.potential)
-
-# println("parameter mean: ", mean_params, "±", std_params)
-
-# traj_plot = plot!(traj_plot, t0, mean_traj, ribbon=CI_traj)
-# pot_plot = plot!(pot_plot, x0, mean_pot, ribbon=CI_pot)
-# resultplot = plot(traj_plot, pot_plot, layout=(2,1), size=(1200, 800))
+traj_plot = plot!(traj_plot, t0, mean_traj, ribbon=CI_traj)
+pot_plot = plot!(pot_plot, x0, mean_pot, ribbon=CI_pot)
+resultplot = plot(traj_plot, pot_plot, layout=(2,1), size=(1200, 800))
 

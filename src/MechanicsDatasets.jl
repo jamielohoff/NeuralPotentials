@@ -33,16 +33,8 @@ module MechanicsDatasets
     
 
     """
-    Function that plots the groundtruth potential and the predicted potential together with the trajectory.
+    Function designed to sample 
     """
-    function potentialplotter(prediction::AbstractArray, 
-        goundtruth::AbstractArray, 
-        dNN::FastChain, 
-        potential::Function,
-        dimensions::Array)
-
-    end
-
     function sampletrajectories(ODE, params::Any, initialConditions::AbstractArray, t::AbstractArray)
         tspan = (t[1], t[end])
         trajectoryList = []

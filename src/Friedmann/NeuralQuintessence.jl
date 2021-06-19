@@ -62,10 +62,10 @@ end
 cb = function(p, l, pred)
     println("Loss: ", l)
     println("Parameters: ", p[1:2])
-    return l < 1.20
+    return l < 1.10
 end
 
-@time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=300)
+@time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=500)
 
 res = solve(problem, Tsit5(), u0=vcat(result.minimizer[1:2],[1.0, 0.0]), p=result.minimizer[3:end], saveat=uniquez)
 
@@ -79,19 +79,20 @@ plot1 = Plots.scatter(
             legend=:bottomright
 )
 
-plot1 = Plots.plot!(plot1, uniquez, mu(uniquez, res[end,:]), label="fit")
 potential = map(q -> V(q, result.minimizer[3:end])[1], res[1,:])
-EoS = Qtils.calculateEOS(potential, res[2,:])
-slowroll = Qtils.slowrollsatisfied(V, result.minimizer[3:end], res[1,:], G, verbose=true)
-println("Slowroll conditions satisfied: ", slowroll)
+EoS = Qtils.calculateEOS(potential, res[2,:], res[3,:], uniquez)
+slowroll = Qtils.slowrollsatisfied(V, result.minimizer[3:end], res[1,:], verbose=true)
+
+plot1 = Plots.plot!(plot1, uniquez, mu(uniquez, res[end,:]), label="fit")
 plot2 = Plots.plot(uniquez, EoS, title="Equation of State", xlabel="redshift z", ylabel="equation of state w", legend=:topright)
 plot3 = Plots.plot(res[1,:], potential, title="Potential", xlabel="quintessence field ϕ", ylabel="V(ϕ)", legend=:bottomright)
 plot4 = Plots.plot(uniquez, 1 .- Ω_ϕ(res[2,:], res[3,:], potential), title="Density Evolution", xlabel="redshift z", ylabel="density parameter Ω", label="Ω_m")
 plot4 = Plots.plot!(plot4, uniquez, Ω_ϕ(res[2,:], res[3,:], potential), legend=:topright, label="Ω_ϕ")
 
 println("Cosmological parameters: ")
-println("Mass parameter Ω_m = ", 1 - Ω_ϕ(res[2,:], res[3,:], potential)[1])
+println("Dark matter density parameter Ω_m = ", 1 - Ω_ϕ(res[2,:], res[3,:], potential)[1])
 println("Initial conditions for quintessence field = ", result.minimizer[1:2])
+println("Slowroll satisfied for ϵ and η: ", slowroll)
 
 # m_ϕ =  Flux.gradient(Q -> dV(Q, result.minimizer[3:end])[1], 0)[1]
 # println("Mass of the scalar field = ", m_ϕ)
