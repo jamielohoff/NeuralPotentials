@@ -78,7 +78,7 @@ end
 @time z, µ = custom_train!(params, iterator, opt; cb)
 
 plot1 = scatter(
-            data.z, data.my, 
+            data.z, data.mu, 
             title="Redshift-Magnitude Data",
             xlabel="redshift z",
             ylabel="apparent magnitude μ",

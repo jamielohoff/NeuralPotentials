@@ -63,7 +63,7 @@ traj_plot = scatter!(traj_plot, t0, data[2,:])
 
 # Plotting the potential
 x0 = Array(range(-u0[1], u0[1], step=0.01))
-predicted_potential = map(x -> Qtils.integrateNN(dV, x, result.minimizer[3:end]), x0)
+predicted_potential = map(x -> Qtils.integrateNN(dV, result.minimizer[3:end], 0.0, x), x0)
 true_potential = map(x -> V0(x, p), x0)
 pot_plot = plot(x0, predicted_potential)
 pot_plot = plot!(pot_plot, x0,true_potential, ylims=(-0.25,3.5), xlims=(-u0[1],u0[1]))

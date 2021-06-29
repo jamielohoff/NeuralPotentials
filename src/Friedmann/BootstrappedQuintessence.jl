@@ -10,63 +10,50 @@ const c = 306.4 # in Mpc / Gyr
 const G = 4.475e-53 # in Mpc^3 / (Gyr^2 * planck mass)
 
 u0 = [1.0, 0.0]
-p = vcat([3.0f0, 0.0f0])
+p = vcat([3.0, 0.0, 0.0])
 tspan = (0.0, 7.0)
 
-mu(z, d_L) = 5.0 .* log10.((c/H0)*abs.((1.0 .+ z) .* d_L)) .+ 25.0 # we have a +25 instead of -5 because we measure distances in Mpc
-Ω_ϕ(dQ, E, V) = 8pi/3 .* (0.5 .* dQ.^2 .+ V)./ E.^2
+mu(z, χ) = 5.0 .* log10.((c/H0)*abs.((1.0 .+ z) .* χ)) .+ 25.0 # we have a +25 instead of -5 because we measure distances in Mpc
+Ω_ϕ(dQ, E, V, z) = 8pi/3 .* (0.5 .* ((1 .+ z).*E.*dQ).^2 .+ V)./ E.^2
 
-V = FastChain(
+dV = FastChain(
     FastDense(1, 8, relu),
-    # FastDense(8, 8, relu),
-    FastDense(8, 1, exp) # maybe choose sigmoid as output function to enforce positive potentials only
+    FastDense(8, 8, relu),
+    FastDense(8, 1) # maybe choose sigmoid as output function to enforce positive potentials only
 )
 
-dV(Q, p) = Flux.gradient(q -> V(q, p)[1], Q)[1]
+ps = vcat(p, initial_params(dV))
 
-ps = vcat(p, initial_params(V))
+function slowrollregulatisation(dQ, V, E, z)
+    return sum(((1 .+ z).*E.*dQ).^2 ./ V) / size(z, 1)
+end
 
 # 1st order ODE for Friedmann equation in terms of z
 function friedmann!(du,u,p,z)
     Q = u[1]
     dQ = u[2]
-    E = u[3]
-    d_L = u[4]
+    V = u[3]
+    E = u[4]
+    χ = u[5]
     
-    Ω_m = 1 - 8pi/3 * (0.5*dQ^2 .+ V(Q, p)[1])/E^2
-    dE = 1.5*E/(1+z)*(Ω_m + 8pi/3 * ((1+z)*dQ/E)^2)
+    Ω_m = 1 - Ω_ϕ(dQ, E, V, z)
+    dE = 1.5*(E/(1+z)) * (Ω_m + 8pi/3 * ((1+z)*dQ)^2)
 
     du[1] = dQ
     du[2] = (2/(1+z) - dE/E) * dQ - dV(Q, p)[1]/(E*(1+z))^2
-    du[3] = dE
-    du[4] = 1/E
+    du[3] = abs(dV(Q, p)[1] * dQ)
+    du[4] = dE
+    du[5] = 1/E
 end
 
 problem = ODEProblem(friedmann!, u0, tspan, p)
 
-function predict(params, z)
-    u0 = vcat(params[1:2],[1.0, 0.0])
-    return Array(solve(problem, Tsit5(), u0=u0, p=params[3:end], saveat=z))
-end
-
-function loss(params, sampledata)
-    pred = predict(params, sampledata.z)
-    µ = mu(sampledata.z, pred[end,:])
-    return Qtils.reducedchisquared(μ, sampledata, size(params,1)), pred
-end
-
-cb = function(p, l, pred)
-    println("Loss: ", l)
-    println("Parameters: ", p[1:2])
-    return l < 1.10
-end
-
 ### Bootstrap Loop
-itmlist = DataFrame(params = Array[], Q = Array[], Ω_ϕ = Array[], d_L = Array[], EoS = Array[], potential = Array[])
-repetitions = 1
+itmlist = DataFrame(params = Array[], Q = Array[], Ω_ϕ = Array[], μ = Array[], EoS = Array[], potential = Array[])
+repetitions = 64
 
 dplot = scatter(
-            data.z, data.my, 
+            data.z, data.mu, 
             title="Redshift-Magnitude Data",
             xlabel="redshift z",
             ylabel="distance modulus μ",
@@ -78,23 +65,39 @@ dplot = scatter(
 println("Beginning Bootstrap...")
 lk = ReentrantLock()
 @time Threads.@threads for rep in 1:repetitions
-    sampledata = Qtils.elaboratesample(data, uniquez, 0.5)
+    println("Starting repetition ", rep, " at thread ID ", Threads.threadid())
+    sampledata = Qtils.elaboratesample(data, uniquez, 0.75)
 
-    p = [3.0f0, 0.0f0]
-    ps = vcat(p, initial_params(V))
+    function predict(params)
+        return Array(solve(problem, Tsit5(), u0=vcat(params[1:3],[1.0, 0.0]), p=params[4:end], saveat=sampledata.z))
+    end
+    
+    function loss(params)
+        pred = predict(params)
+        µ = mu(sampledata.z, pred[end,:])
+        return Qtils.reducedchisquared(μ, sampledata, size(params,1)) + slowrollregulatisation(pred[2,:], pred[3,:], pred[4,:], uniquez), pred
+    end
+    
+    cb = function(p, l, pred)
+        println("Loss: ", l)
+        println("Parameters: ", p[1:3])
+        println("Dark matter density parameter: ", 1 - Ω_ϕ(pred[2,:], pred[4,:], pred[3,:], sampledata.z)[1])
+        return l < 1.05
+    end
+
+    p = [3.0, 0.0, 0.0]
+    ps = vcat(p, initial_params(dV))
     opt = ADAM(1e-2)
-    # @time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=500)
-    @time Qtils.bootstraptrain!(sampledata, loss, ps, opt, cb, maxiters=300)
+    @time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=300)
 
-    u0 = vcat(ps[1:2], [1.0, 0.0])
-    res = solve(problem, Tsit5(), u0=u0, p=ps[3:end], saveat=uniquez)
+    u0 = vcat(result.minimizer[1:3], [1.0, 0.0])
+    res = Array(solve(problem, Tsit5(), u0=u0, p=result.minimizer[4:end], saveat=uniquez))
 
-    potential = map(q -> V(q, result.minimizer[3:end])[1], res[1,:])
-    EoS = Qtils.calculateEOS(potential, res[2,:], res[3,:], sampledata.z)
-    density_ϕ = Ω_ϕ(res[2,:], res[3,:], potential)
+    EoS = Qtils.calculateEOS(res[3,:], res[2,:], res[4,:], uniquez)
+    density_ϕ = Ω_ϕ(res[2,:], res[4,:], res[3,:], uniquez)
 
     lock(lk)
-    push!(itmlist, [[result.minimizer[1:2]], res[1,:], density_ϕ, mu(uniquez,res[end,:]), EoS, potential])
+    push!(itmlist, [result.minimizer[1:2], res[1,:], density_ϕ, mu(uniquez,res[end,:]), EoS, res[3,:]])
     unlock(lk)
     println("Repetition ", rep, " is done!")
 end
@@ -102,21 +105,21 @@ println("Bootstrap complete!")
 
 # CSV.write(joinpath(@__DIR__, "Bootstrap.CSV"), itmlist)
 
-# mean_params, std_params, CI_params = Qtils.calculatestatistics(itmlist.params)
-mean_d_L, std_d_L, CI_d_L = Qtils.calculatestatistics(itmlist.d_L)
+mean_params, std_params, CI_params = Qtils.calculatestatistics(itmlist.params)
+mean_μ, std_μ, CI_μ = Qtils.calculatestatistics(itmlist.μ)
 mean_EoS, std_EoS, CI_EoS = Qtils.calculatestatistics(itmlist.EoS)
 mean_Ω_ϕ, std_Ω_ϕ, CI_Ω_ϕ = Qtils.calculatestatistics(itmlist.Ω_ϕ)
-# mean_V, std_V, CI_V = Qtils.calculatestatistics(itmlist.potential)
+mean_V, std_V, CI_V = Qtils.calculatestatistics(itmlist.potential)
 
 
 println("Cosmological parameters: ")
-# println("Mass parameter Ω_m = ", mean_params[3], "±", std_params[3])
+println("Density parameter Ω_ϕ = ", mean_Ω_ϕ[1], "±", std_Ω_ϕ[1])
 println("Initial conditions of scalar field: ", )
-#println("Q_0: = ", mean_params[1], "±", std_params[1])
-#println("dQ_0: = ", mean_params[2], "±", std_params[2])
+println("Q_0 = ", mean_params[1], "±", std_params[1])
+println("dQ_0 = ", mean_params[2], "±", std_params[2])
 
 
-dplot = plot!(dplot, uniquez, mean_d_L, ribbon=CI_d_L, label="fit")
+μ_plot = plot!(dplot, uniquez, mean_μ, ribbon=CI_μ, label="fit")
 EoS_plot = plot(uniquez, mean_EoS, ribbon=CI_EoS, 
                 title="Equation of State w", 
                 xlabel="redshift z", 
@@ -130,11 +133,17 @@ EoS_plot = plot(uniquez, mean_EoS, ribbon=CI_EoS,
                 ylabel="density parameter Ω", 
                 label="Ω_ϕ"
 )
-# V_plot = plot(uniquez, mean_V, ribbon=CI_V, 
-#                 title="Potential", 
-#                 xlabel="redshift z", 
-#                 ylabel="potential", 
-#                 label="Ω_ϕ"
-# )
-plot(dplot, EoS_plot, Ω_plot, layout=(3,1), size=(1200, 800))
+Ω_plot = plot!(Ω_plot, uniquez, 1 .- mean_Ω_ϕ, ribbon=CI_Ω_ϕ,
+                title="Density evolution", 
+                xlabel="redshift z", 
+                ylabel="density parameter Ω", 
+                label="Ω_ϕ"
+)
+V_plot = plot(uniquez, mean_V, ribbon=CI_V, 
+                title="Potential", 
+                xlabel="redshift z", 
+                ylabel="potential", 
+                label="V"
+)
+plot(μ_plot, EoS_plot, Ω_plot, V_plot, layout=(2,2), size=(1200, 800))
 

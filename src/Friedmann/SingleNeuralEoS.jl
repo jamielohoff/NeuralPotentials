@@ -13,7 +13,7 @@ p = rand(Float32, 1)
 u0 = vcat(p, [H0, 0.0])
 tspan = (0.0, 7.0)
 
-mu(z, d_L) = 5.0 .* log10.(abs.((1.0 .+ z) .* d_L)) .+ 25.0 # we have a +25 instead of -5 because we measure distances in Mpc
+mu(z, χ) = 5.0 .* log10.(abs.((1.0 .+ z) .* χ)) .+ 25.0 # we have a +25 instead of -5 because we measure distances in Mpc
 
 # Defining the time-dependent equation of state
 w = FastChain(
@@ -27,7 +27,7 @@ ps = vcat(p, initial_params(w))
 function friedmann!(du,u,p,z)
     Ω = u[1]
     H = u[2]
-    d_L = u[3]
+    χ = u[3]
     
     du[1] = (1 - w(z, p)[1])/(1+z) * Ω
     du[2] = 1.5*H0^2/(H*(1+z)) * (1 - w(z, p)[1])*Ω
@@ -58,7 +58,7 @@ opt = ADAM(1e-2)
 res = solve(problem, Tsit5(), u0=u0, p=result.minimizer, saveat=uniquez)
 
 plot1 = Plots.scatter(
-            data.z, data.my, 
+            data.z, data.mu, 
             title="Redshift-Magnitude Data",
             xlabel="redshift z",
             ylabel="distance modulus μ",

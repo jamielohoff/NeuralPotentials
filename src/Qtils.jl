@@ -1,4 +1,7 @@
 module Qtils
+using Flux: Zygote
+using Base: Real, Number
+using Zygote: @adjoint
 """
 A package containing utilities that are used to analyze cosmological data in 
 the context of quintessence and supernova data.
@@ -37,14 +40,22 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
     The lower bound is 0 while the upper bounds can be specified,
 
     Arguments:
-    1. `upperbound`: Array of upper bounds for the integrations.
-    2. `NN`: The neural network as a FastChain object.
-    3. `params`: Parameters, i.e. weights and biases of the neural network.
+    1. `NN`: The neural network as a FastChain object.
+    2. `params`: Parameters, i.e. weights and biases of the neural network.
+    3. `a`: Lower bound for the integration.
+    4. `b`: Upper bound for the integration.
     """
-    function integrateNN(upperbound::Real, NN::FastChain, params::Array)
-        integral, err = quadgk(x -> NN([x], params), 0.0, upperbound, rtol=1e-8)
+    function integrateNN(NN::FastChain, params::AbstractArray, a, b)
+        integral, err = quadgk(x -> NN(x, params), a, b, rtol=1e-8)
         return integral[1]
     end
+    
+    @adjoint integrateNN(NN, params, a, b) = Qintegrate(NN, params, a, b), c -> (
+        0.0, 
+        c * Qintegrate((x,p) -> Zygote.gradient(p -> NN(x,p)[1], p)[1], params, a, b), 
+        0.0, 
+        0.0
+    )
 
     """
     Function that can be used to integrate a neural network with one input and output node.
@@ -80,6 +91,8 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
         data = outerjoin(sndata,grbdata,on=[:z,:my,:me])
         uniquez = unique(data.z)
 
+        rename!(data,:my => :mu)
+
         return data, uniquez
     end
 
@@ -96,7 +109,7 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
         averagedata = DataFrame(mu = Real[], me = Real[])
         for z in uniquez
             idx = findall(x -> x==z, data.z)
-            avg_mu = sum([data.my[i] for i in idx]) / length(idx)
+            avg_mu = sum([data.mu[i] for i in idx]) / length(idx)
             avg_me = sum([data.me[i] for i in idx]) / length(idx)
             push!(averagedata, [avg_mu, avg_me])
         end
@@ -117,6 +130,25 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
     function reducedchisquared(model::AbstractArray, data::DataFrame, nparams::Number)
         n = nrow(data)
         return sum(abs2, (model .- data.mu) ./ (data.me)) ./ (n - nparams)
+    end
+
+    """
+    Function to calculate the reduced χ² statistical measure 
+    for a given model prediction, groundtruth and a fixed standard error/deviation.
+    The array which contains the experimental data can have multiple rows, 
+    but of course the number of rows of the data should equal the number of 
+    rows of the model output.
+    Also, the data in all rows should have the same variance σ.
+    
+    Arguments:
+    1. `model`: Array that contains the model predictions.
+    2. `data`: Dataframe which contains the exprimental data.
+    3. `nparams`: The number of parameters of the model.
+    4. `σ`: Standard error/deviation of the datapoints.
+    """
+    function reducedchisquared(model::AbstractArray, data::AbstractArray, nparams::Number, σ::Number)
+        n = size(data,2)
+        return sum(abs2, (model .- data) ./ σ) ./ (n - nparams)
     end
 
     """
@@ -160,7 +192,7 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
             println(ϵ, η)
         end
 
-        return !any(x -> x > threshold, ϵ), !any(x -> x > threshold, η) # Check if there are any values above the threshold
+        return all(x -> x < threshold, ϵ), all(x -> x < threshold, η) # Check if there are any values above the threshold
     end
 
     """
@@ -174,21 +206,49 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
     5. `threshold`: The threshold below which we assume the slow roll conditions to be true.
     6. `verbose`: If set to true, the function will print and array which contains the slow roll conditions at every point defined in range.
     """
-    function slowrollsatisfied(F, dF, params::AbstractArray, range::AbstractArray; threshold=0.01, verbose=false)
-        dV = map(x -> dF(x, params), range)
-        ddF(x) = Flux.gradient(x -> dF(x,params)[1], x)[1]
-        ddV = map(x -> ddF(x), range)
+    function slowrollsatisfied(F, params::AbstractArray, range::AbstractArray; threshold=0.01, verbose=false)
+        dF(x, p) = Zygote.gradient(x -> F(x, p), x)[1]
+        ddF(x, p) = Zygote.hessian(x -> F(x, p), x)[1,1]
         V = map(x -> F(x, params), range)
+        dV = map(x -> dF(x, params), range)
+        ddV = map(x -> ddF(x, params), range)
 
         # Calculation of the slow roll parameters
         ϵ = 1/(16pi) .* (dV./V).^2
-        η = 1/(8pi) .* (ddV ./ V)
+        η = 1/(8pi) .* (ddV./V)
 
         if verbose
             println(ϵ, η)
         end
 
-        return !any(x -> x > threshold, ϵ), !any(x -> x > threshold, η) # Check if there are any values above the threshold
+        return all(x -> x < threshold, ϵ), all(x -> x < threshold, abs.(η)) # Check if there are any values above the threshold
+    end
+
+    """
+    Function to check if the slow roll conditions are satisfied for a given quintessence potential.
+    
+    Arguments: 
+    1. `V`: Array which represents the potential.
+    2. `NN`: Neural network which represents the gradient of the potential.
+    3. `params`: Parameters of potential.
+    4. `range`: The range of field values Q, where we want to test the validity of the slow roll conditions.
+    5. `threshold`: The threshold below which we assume the slow roll conditions to be true.
+    6. `verbose`: If set to true, the function will print and array which contains the slow roll conditions at every point defined in range.
+    """
+    function slowrollsatisfied(V::AbstractArray, NN, params::AbstractArray, range::AbstractArray; threshold=0.01, verbose=false)
+        dV = map(x -> NN(x, params)[1], range)
+        dNN(x) = Flux.gradient(x -> NN(x,params)[1], x)[1]
+        ddV = map(x -> dNN(x)[1], range)
+
+        # Calculation of the slow roll parameters
+        ϵ = 1/(16pi) .* (dV./V).^2
+        η = 1/(8pi) .* (ddV./V)
+
+        if verbose
+            println(ϵ, η)
+        end
+
+        return all(x -> x < threshold, ϵ), all(x -> x < threshold, η) # Check if there are any values above the threshold
     end
 
     """
@@ -219,7 +279,7 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
 
     """
     Function to sample from the supernova data in such a way that for each redshift we only have
-    exactly one value for the distance modulus.
+    exactly one value for the distance modulus when it is drawn.
 
     Arguments:
     Arguments:
@@ -228,16 +288,17 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
     3. `uniquez`: The unique redshifts in the data.
     """
     function elaboratesample(data::AbstractDataFrame, uniquez::AbstractArray, ratio::Real)
-        # rename column :my to :mu for convenience
-        rename!(data,:my => :mu)
         # randomly choose one of the values for multiple occurences of the same redshift
+        population = deepcopy(data)
+        idx_list = Array([])
         for z in uniquez
-            occurence = findall(x -> x == z, data.z)
-            if size(occurence, 1) > 1
-                delete!(data, sort(shuffle(occurence)[2:end]))
+            occurences = findall(x -> x == z, population.z)
+            if size(occurences, 1) > 1
+                idx_list = vcat(idx_list, shuffle(occurences)[2:end])
             end
         end
-        return sample(data, ratio)
+        delete!(population, sort(idx_list))
+        return sample(population, ratio)
     end
 
     """

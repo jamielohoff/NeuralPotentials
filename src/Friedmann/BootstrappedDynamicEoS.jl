@@ -1,3 +1,4 @@
+using Base: Float32
 using Flux, DiffEqFlux, DifferentialEquations
 using DataFrames, CSV, Plots, Statistics
 include("../Qtils.jl")
@@ -9,19 +10,16 @@ const H0 = 0.07 # 1 / Gyr
 const c = 306.4 # in Mpc / Gyr
 const G = 4.475e-53 # in Mpc^3 / (Gyr^2 * planck mass)
 
+p = 0.311 # 0.25 .+  0.75 .* rand(Float32, 1)
+ps = vcat(p, rand(Float32, 2) .- 1.0)
 tspan = (0.0, 7.0)
-u0 = [0.3, 1.0, 0.0]
+u0 = [p[1], 1.0, 0.0]
 
-mu(z, χ) = 5.0 .* log10.((c/H0) * abs.((1.0 .+ z) .* χ)) .+ 25.0 # we have a +25 instead of -5 because we measure distances in Mpc
+# we have a +25 instead of -5 because we measure distances in Mpc
+mu(z, χ) = 5.0 .* log10.((c/H0) * abs.((1.0 .+ z) .* χ)) .+ 25.0 
 
 # Defining the time-dependent equation of state
-w_DE = FastChain(
-    FastDense(1, 8, relu),
-    FastDense(8, 8, relu),
-    FastDense(8, 1, tanh) # choose output function such that -1 < w < 1
-)
-
-p = vcat(rand(Float32, 1), initial_params(w_DE))
+w_DE(z, p) = p[1] + p[2] * z/(1+z)
 
 # 1st order ODE for Friedmann equation in terms of z
 function friedmann!(du,u,p,z)
@@ -29,8 +27,8 @@ function friedmann!(du,u,p,z)
     E = u[2]
     χ = u[3]
 
-    Ω_DE = 1 - Ω_m 
-    dE = 1.5*E/(1+z) * (Ω_m + (1 + w_DE(z, p)[1])*Ω_DE)
+    Ω_DE = 1 - Ω_m
+    dE = 1.5*E/(1+z) * (Ω_m + (1 + w_DE(z, p))*Ω_DE)
     
     du[1] = (3/(1+z) - 2*dE/E) * Ω_m
     du[2] = dE
@@ -57,36 +55,36 @@ println("Beginning Bootstrap...")
 lk = ReentrantLock()
 @time Threads.@threads for rep in 1:repetitions
     println("Starting repetition ", rep, " at thread ID ", Threads.threadid())
-    sampledata = Qtils.elaboratesample(data, uniquez, 0.5)
+    sampledata = Qtils.elaboratesample(data, uniquez, 0.75)
 
     function predict(params)
-        u0 = [params[1], 1.0, 0.0]
+        u0 = [p, 1.0, 0.0]
         return Array(solve(problem, Tsit5(), u0=u0, p=params[2:end], saveat=sampledata.z))
     end
     
     function loss(params)
         pred = predict(params)
         µ = mu(sampledata.z, pred[end,:])
-        return Qtils.reducedchisquared(μ, sampledata, size(params,1)), pred
+        return mean((μ - sampledata.mu).^2), pred
+        # return abs(Qtils.reducedchisquared(μ, sampledata, size(params,1)) .- 1.0), pred
     end
     
     cb = function(p, l, pred)
-        #println("Loss at thread ", Threads.threadid(), " : ", l)
-        #println("Params at thread ", Threads.threadid(), " : ", p[1])
-        return l < 1.15
+        # println("Loss at thread ", Threads.threadid(), " : ", l)
+        # println("Params at thread ", Threads.threadid(), " : ", p[1:3])
+        return false
     end
 
-    p = 0.25 .+  0.75 .* rand(Float32, 1)
-    ps = vcat(p, initial_params(w_DE))
-    opt = ADAM(1e-2)
-    @time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=500)
+    ps = vcat(p, rand(Float32, 2) .- 1.0)
+    opt = ADAM(1e-3)
+    @time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=5000)
 
     u0 = [result.minimizer[1], 1.0, 0.0]
     res = Array(solve(problem, Tsit5(), u0=u0, p=result.minimizer[2:end], saveat=uniquez))
-    EoS = map(z -> w_DE(z, result.minimizer[2:end])[1], uniquez)
+    EoS = map(z -> w_DE(z, result.minimizer[2:end]), uniquez)
 
     lock(lk)
-    push!(itmlist, [[result.minimizer[1]], res[1,:], mu(uniquez,res[end,:]), EoS])
+    push!(itmlist, [result.minimizer[1:3], res[1,:], mu(uniquez,res[end,:]), EoS])
     unlock(lk)
     println("Repetition ", rep, " is done!")
 end
@@ -101,8 +99,9 @@ mean_Ω, std_Ω, CI_Ω = Qtils.calculatestatistics(itmlist.Ω)
 
 println("Cosmological parameters: ")
 println("Mass parameter Ω_m = ", mean_params[1], " ± ", std_params[1])
+println("CPL parameters w_0, w_a = ", mean_params[2:end]," ± ", std_params[2:end])
 
-μ_plot = plot!(μ_plot, uniquez, mean_μ, ribbon=CI_μ, label="fit")
+μ_plot = plot!(dplot, uniquez, mean_μ, ribbon=CI_μ, label="fit")
 EoS_plot = plot(uniquez, mean_EoS, ribbon=CI_EoS, 
                 title="Equation of State w", 
                 xlabel="redshift z", 
@@ -114,10 +113,10 @@ EoS_plot = plot(uniquez, mean_EoS, ribbon=CI_EoS,
                 title="Density evolution", 
                 xlabel="redshift z", 
                 ylabel="density parameter Ω", 
-                label="Ω_m"
+                label="Ω_DE"
 )
 Ω_plot = plot!(Ω_plot, uniquez, 1 .- mean_Ω, ribbon=CI_Ω,
-                label="Ω_Λ"
+                label="Ω_m"
 )
 plot(μ_plot, EoS_plot, Ω_plot, layout=(3,1), size=(1200, 800))
 

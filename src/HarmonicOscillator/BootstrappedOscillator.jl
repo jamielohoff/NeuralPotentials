@@ -35,32 +35,9 @@ end
 
 prob = ODEProblem(neuraloscillator!, u0, tspan, p)
 
-function predict(params, t)
-    return Array(solve(prob, Tsit5(), u0=params[1:2], p=params[3:end], saveat=t))
-end
-
-function loss(params, data)
-    pred = predict(params, data[1,:])
-    return sum(abs2, (pred .- data[2:3,:])./stderr) / (size(data, 2) - size(params, 1)), pred
-end
-
-cb = function(p,l,pred)
-    println("Loss at thread ", Threads.threadid(), " : ", l)
-    println("Params at thread ", Threads.threadid(), " : ", p[1:2])
-    return l < 1.1
-end
-
-# otherparams = rand(Float32, 2) .+ [1.5, 0.0] # contains u0, du0
-# ps = vcat(otherparams, initial_params(dV))
-
-# opt = ADAM(0.1)
-# @time Qtils.bootstraptrain!(sampledata, loss, ps, opt, cb, maxiters=500)
-
-# res = Array(solve(prob, Tsit5(), u0=ps[1:2], p=ps[3:end], saveat=fulldata[1,:]))
-
 ### Bootstrap Loop ----------------------------------------------------- #
 itmlist = DataFrame(params = Array[], potential = Array[], trajectories = Array[])
-repetitions = 16
+repetitions = 64
 
 x0 = Array(range(-u0[1], u0[1], step=0.05))
 true_potential = map(x -> V0(x, p), x0)
@@ -71,17 +48,33 @@ println("Beginning Bootstrap...")
 lk = ReentrantLock()
 @time Threads.@threads for rep in 1:repetitions
     sampledata = Qtils.sample(fulldata, 0.5)
+
+    function predict(params)
+        return Array(solve(prob, Tsit5(), u0=params[1:2], p=params[3:end], saveat=sampledata[1,:]))
+    end
+    
+    function loss(params)
+        pred = predict(params)
+        return sum(abs2, (pred .- sampledata[2:3,:])./stderr) / (size(sampledata, 2) - size(params, 1)), pred
+    end
+    
+    cb = function(p,l,pred)
+        println("Loss at thread ", Threads.threadid(), " : ", l)
+        println("Params at thread ", Threads.threadid(), " : ", p[1:2])
+        return l < 1.1
+    end
+
     otherparams = rand(Float32, 2) .+ [1.5, 0.0] # contains u0, du0
     ps = vcat(otherparams, initial_params(dV))
     opt = ADAM(0.1)
 
-    @time Qtils.bootstraptrain!(sampledata, loss, ps, opt, cb, maxiters=300)
+    @time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=500)
 
-    result = Array(solve(prob, Tsit5(), u0=ps[1:2], p=ps[3:end], saveat=t0))
-    potential = map(x -> Qtils.integrateNN(x, dV, ps[3:end]), x0)
+    res = Array(solve(prob, Tsit5(), u0=result.minimizer[1:2], p=result.minimizer[3:end], saveat=t0))
+    potential = map(x -> Qtils.integrateNN(dV, result.minimizer[3:end], 0.0, x), x0)
 
     lock(lk)
-    push!(itmlist, [ps[1:2], potential, result[1,:]])
+    push!(itmlist, [result.minimizer[1:2], potential, res[1,:]])
     unlock(lk)
     println("Repetition ", rep, " is done!")
 end

@@ -1,16 +1,18 @@
 module MechanicsDatasets
 
-    using DifferentialEquations, Flux, DiffEqFlux, Distributions
+    using Flux: Zygote
+using DifferentialEquations, Flux, DiffEqFlux, Distributions, Zygote
     """
     Function that solves the 1-dimensional 2nd order ODE for a given potential V
     """
     function potentialproblem(V::Function, 
         u0::AbstractArray, 
         p::AbstractArray, 
-        t::Array; 
+        t::AbstractArray; 
         addnoise=false, 
         σ=0.01)
-        dV(x,p) = Flux.gradient(x -> V(x,p)[1], x)[1]
+
+        dV(x,p) = Zygote.gradient(x -> V(x,p)[1], x)[1]
 
         function potentialODE!(du, u, p, t)
             x = u[1]
@@ -23,14 +25,14 @@ module MechanicsDatasets
         problem = ODEProblem(potentialODE!, u0, (t[1],t[end]), p)
         solution = solve(problem, Tsit5(), saveat=t)
 
+        # add normally distributed noise
         if addnoise
             pdf = Normal(0.0, σ)
-            noise =  rand(pdf, size(solution)) # add normally distributed noise
+            noise =  rand(pdf, size(solution))
             data = solution[1:2,:] .+ noise
         end
         return vcat(reshape(t,1,:),data)
     end
-    
 
     """
     Function designed to sample 
