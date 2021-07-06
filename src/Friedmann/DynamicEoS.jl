@@ -47,8 +47,8 @@ end
 function loss(params)
     pred = predict(params)
     µ = mu(uniquez, pred[end,:])
-    return mean((μ - averagedata.mu).^2), pred
-    # return Qtils.reducedchisquared(μ, averagedata, size(params,1)), pred
+    # return mean((μ - averagedata.mu).^2), pred
+    return Qtils.reducedχ2(μ, averagedata, size(params,1)), pred
 end
 
 cb = function(p, l, pred)

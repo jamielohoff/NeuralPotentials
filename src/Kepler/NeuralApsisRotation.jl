@@ -23,7 +23,7 @@ true_v0 = 0.6 * sqrt(G*M/r0)/sqrt(1-rs/r0)
 true_u0 =  [1/r0, 0] # 
 
 true_p = [G*M/(true_v0*r0)^2, 3*G*(M+m)*m^2/(c^2*μ)]
-ϕspan = (0.0, 7.5*pi)
+ϕspan = (0.0, 5.0*pi)
 ϕ = Array(range(ϕspan[1], ϕspan[2], length=256))
 stderror = 0.01
 V0(x,p) = -p[1]*x - p[2]*x^3 + 0.5*x^2
@@ -63,45 +63,57 @@ function loss(params)
     return mean((pred .- data[2:3, :]).^2), pred
 end
 
-opt = RMSProp(1e-2)
+opt = ADAM(1e-2, (0.8, 0.95))# RMSProp(1e-2)
+anim = Animation()
 
 cb = function(p,l,pred)
     display(l)
     display(p[1:2])
     R = 1 ./ pred[1, :] # convert into Radii
     traj_plot = plot(R .* cos.(ϕ), R .* sin.(ϕ), 
-                    xlims=(-r0, r0), 
-                    ylims=(-r0, r0),
+                    label="fit using neural network",
+                    xlims=(-r0-1.0, r0+1.0), 
+                    ylims=(-r0-1.0, r0+1.0),
                     xlabel=L"x\textrm{ coordinate in }10^6 m",
                     ylabel=L"y\textrm{ coordinate in }10^6 m",
                     title="position of the test mass and potential")
-    traj_plot = scatter!(traj_plot, R_gt .* cos.(ϕ), R_gt .* sin.(ϕ))
+    traj_plot = scatter!(traj_plot, R_gt .* cos.(ϕ), R_gt .* sin.(ϕ), label="data")
 
     # Plotting the potential
-    u0 = Array(range(0.1, r0, step=0.001))
-    y0 = map(x -> Qtils.integrateNN(dV, p[3:end], 0.0, x) + 0.5*x^2, 1 ./ u0)
-    z0 = map(x -> V0(x, true_p), 1 ./ u0)
-    #y0 = map(x -> dV(x, p[3:end])[1], u0)
-    #z0 = map(x -> dV0(x, true_p), u0)
+    u = Array(range(0.1, r0, step=0.001))
+    v = map(x -> Qtils.integrateNN(dV, p[3:end], 0.0, x) + 0.5*x^2, 1 ./ u)
+    v0 = map(x -> V0(x, true_p), 1 ./ u)
 
-    pot_plot = plot(u0, y0, ylims=(-10.0, 20.0),
+    pot_plot = plot(u, v, ylims=(-10.0, 20.0), 
+                    label="potential predicted by neural network",
                     xlabel=L"\textrm{radius } R \textrm{ in } 10^6 m",
-                    ylabel=L"\textrm{potential } V \textrm{ in } ")
-    pot_plot = plot!(pot_plot, u0, z0)
+                    ylabel=L"\textrm{potential } V")
+    pot_plot = plot!(pot_plot, u, v0, label="groundtruth")
 
-    u_plot = plot(ϕ, pred[1,:],
-                    xlabel=L"\textrm{angle } \phi",
-                    ylabel=L"\textrm{inverse radius} \dfrac{1}{r} \textrm{ in } 10^{-6}m^{-1}")
-    u_plot = scatter!(ϕ, data[2,:])
+    # dv = map(x -> dV(x, p[3:end])[1] + x, u)
+    # dv0 = map(x -> dV0(x, true_p), u)
 
-    du_plot = plot(ϕ, pred[2,:])
-    du_plot = scatter!(ϕ, data[3,:],
-                        xlabel=L"\textrm{angle } \phi",
-                        ylabel=L"\textrm{inverse radius} \dfrac{1}{r} \textrm{ in } 10^{-6}m^{-1}")
+    # grad_plot = plot(u, dv,
+    #                 xlabel=L"\textrm{radius } R \textrm{ in } 10^6 m",
+    #                 ylabel=L"\textrm{gradient of the potential } \frac{dV}{dx}")
+    # grad_plot = plot!(grad_plot, u, dv0)
 
-    display(plot(traj_plot, pot_plot, u_plot, du_plot, layout=(2,2), size=(1200, 800), legend=:bottomright))
-    return l < 0.001
+    # u_plot = plot(ϕ, pred[1,:],
+    #                 xlabel=L"\textrm{angle } \phi",
+    #                 ylabel=L"\textrm{inverse radius} \dfrac{1}{r} \textrm{ in } 10^{-6}m^{-1}")
+    # u_plot = scatter!(ϕ, data[2,:])
+
+    # du_plot = plot(ϕ, pred[2,:])
+    # du_plot = scatter!(ϕ, data[3,:],
+    #                     xlabel=L"\textrm{angle } \phi",
+    #                     ylabel=L"\textrm{inverse radius} \dfrac{1}{r} \textrm{ in } 10^{-6}m^{-1}")
+
+    display(plot(traj_plot, pot_plot, layout=(2,1), size=(1600, 1200), legend=:bottomright))
+    frame(anim)
+    return l < 0.0003
 end
 
 @time result = DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=2000)
+
+gif(anim, "NeuralPerihelionRotation.gif", fps=15)
 

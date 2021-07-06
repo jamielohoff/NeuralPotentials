@@ -4,6 +4,7 @@
 
 # ignore files
 test.jl
+brans-dicke.jl
 
 # ignore folders
 .vscode/

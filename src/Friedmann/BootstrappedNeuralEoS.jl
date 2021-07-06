@@ -9,16 +9,20 @@ const H0 = 0.07 # 1 / Gyr
 const c = 306.4 # in Mpc / Gyr
 const G = 4.475e-53 # in Mpc^3 / (Gyr^2 * planck mass)
 
+
 tspan = (0.0, 7.0)
-u0 = [0.3, 1.0, 0.0]
+Ω_m_0 = 0.311 # From Planck + WMAP + BAO, so statistically independent from SNIa
+u0 = [Ω_m_0 , 1.0, 0.0]
+
 
 mu(z, χ) = 5.0 .* log10.((c/H0) * abs.((1.0 .+ z) .* χ)) .+ 25.0 # we have a +25 instead of -5 because we measure distances in Mpc
 
 # Defining the time-dependent equation of state
 w_DE = FastChain(
-    FastDense(1, 8, relu),
-    FastDense(8, 8, relu),
-    FastDense(8, 1, tanh) # choose output function such that -1 < w < 1
+    FastDense(1, 4, tanh),
+    FastDense(4, 4, tanh),
+    FastDense(4, 4, tanh),
+    FastDense(4, 1, tanh) # choose output function such that -1 < w < 1, constraint from experiments (TODO: find some papers to verify this)
 )
 
 p = vcat(rand(Float32, 1), initial_params(w_DE))
@@ -41,9 +45,9 @@ problem = ODEProblem(friedmann!, u0, tspan, p)
 
 ### Bootstrap Loop
 itmlist = DataFrame(params = Array[], Ω = Array[], μ = Array[], EoS = Array[])
-repetitions = 64
+repetitions = 16
 
-dplot = scatter(
+μ_plot = scatter(
             data.z, data.mu, 
             title="Redshift-Magnitude Data",
             xlabel="redshift z",
@@ -57,29 +61,30 @@ println("Beginning Bootstrap...")
 lk = ReentrantLock()
 @time Threads.@threads for rep in 1:repetitions
     println("Starting repetition ", rep, " at thread ID ", Threads.threadid())
-    sampledata = Qtils.elaboratesample(data, uniquez, 0.5)
+    df = Qtils.elaboratesample(data, uniquez, 1.0)
+    sampledata = Qtils.resample(df)
 
     function predict(params)
-        u0 = [params[1], 1.0, 0.0]
+        u0 = [params[1] , 1.0, 0.0]
         return Array(solve(problem, Tsit5(), u0=u0, p=params[2:end], saveat=sampledata.z))
     end
     
     function loss(params)
         pred = predict(params)
         µ = mu(sampledata.z, pred[end,:])
-        return Qtils.reducedchisquared(μ, sampledata, size(params,1)), pred
+        return Qtils.reducedχ2(μ, sampledata, size(params,1)), pred
     end
     
     cb = function(p, l, pred)
-        #println("Loss at thread ", Threads.threadid(), " : ", l)
-        #println("Params at thread ", Threads.threadid(), " : ", p[1])
-        return l < 1.15
+        # println("Loss at thread ", Threads.threadid(), " : ", l)
+        # println("Params at thread ", Threads.threadid(), " : ", p[1])
+        return l < 1.0
     end
 
     p = 0.25 .+  0.75 .* rand(Float32, 1)
     ps = vcat(p, initial_params(w_DE))
     opt = ADAM(1e-2)
-    @time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=500)
+    @time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=300)
 
     u0 = [result.minimizer[1], 1.0, 0.0]
     res = Array(solve(problem, Tsit5(), u0=u0, p=result.minimizer[2:end], saveat=uniquez))
@@ -113,11 +118,12 @@ EoS_plot = plot(uniquez, mean_EoS, ribbon=CI_EoS,
 Ω_plot = plot(uniquez, mean_Ω, ribbon=CI_Ω, 
                 title="Density evolution", 
                 xlabel="redshift z", 
-                ylabel="density parameter Ω", 
+                ylabel="density parameter Ω_m", 
                 label="Ω_m"
 )
 Ω_plot = plot!(Ω_plot, uniquez, 1 .- mean_Ω, ribbon=CI_Ω,
-                label="Ω_Λ"
+                label="Ω_DE"
 )
-plot(μ_plot, EoS_plot, Ω_plot, layout=(3,1), size=(1200, 800))
+result_plot = plot(μ_plot, EoS_plot, Ω_plot, layout=(3,1), size=(1600, 1200))
+savefig(result_plot, "64_sample_NeuralEoS_fixed_omega_m.png")
 

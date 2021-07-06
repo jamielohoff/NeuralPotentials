@@ -15,17 +15,17 @@ const year = 1 # measure time in years
 
 ### Creation of synthethetic data ------------------------ #
 
-true_v0 = 2*pi*r0 / year # intial velocity
+true_v0 = 2π*r0 / year # intial velocity
 true_u0 =  [1/r0, 1.0] # initial distance, make 2nd argument 0.0 to get circular orbit
 true_p = [G*M / (true_v0*r0)^2]
-phispan = (0.0, 2*pi)
-phi = range(phispan[1], phispan[2], length=100)
+ϕspan = (0.0, 2π)
+ϕ = range(ϕspan[1], ϕspan[2], length=100)
 
 V0(x,p) = -p[1]*x 
 dV0(x,p) = Flux.gradient(x -> V0(x,p)[1], x)[1]
 
 # Works! :)
-function kepler!(du, u, p, t)
+function kepler!(du, u, p, ϕ)
     U = u[1]
     dU = u[2]
 
@@ -33,9 +33,9 @@ function kepler!(du, u, p, t)
     du[2] = -dV0(U,p) - U
 end
 
-problem = ODEProblem(kepler!, true_u0, phispan, true_p)
+problem = ODEProblem(kepler!, true_u0, ϕspan, true_p)
 
-@time sol = solve(problem, Tsit5(), saveat=phi)
+@time sol = solve(problem, Tsit5(), saveat=ϕ)
 
 R_gt = 1 ./ sol[1,:] # convert into Radii
 noise = 0.02 * (2 * rand(Float64, size(R_gt)) .- 1)
@@ -44,8 +44,9 @@ R_gt = R_gt .+ noise
 ### End -------------------------------------------------- #
 
 dV = FastChain(
-    FastDense(1, 16, relu),
-    FastDense(16, 1)
+    FastDense(1, 8, relu),
+    FastDense(8, 8, relu),
+    FastDense(8, 1)
 )
 
 otherparams = rand(Float64, 2) # otherparams = [u0, p]
@@ -56,13 +57,13 @@ function neuralkepler!(du, u, p, t)
     dU = u[2]
 
     du[1] = dU
-    du[2] = -dV([U], p)[1] - U
+    du[2] = -dV(U, p)[1] - U
 end
 
-prob = ODEProblem(neuralkepler!, ps[1:2], phispan, ps[3:end])
+prob = ODEProblem(neuralkepler!, ps[1:2], ϕspan, ps[3:end])
 
 function predict(params)
-    return Array(solve(prob, Tsit5(), u0=params[1:2], p=params[3:end], saveat=phi))
+    return Array(solve(prob, Tsit5(), u0=params[1:2], p=params[3:end], saveat=ϕ))
 end
 
 function loss(params) 
@@ -78,8 +79,8 @@ cb = function(p,l,pred)
     display(p[1:2])
     R = 1 ./ pred[1, :] # convert into Radii
     # Plotting the prediction and ground truth
-    traj_plot = plot(R .* cos.(phi), R .* sin.(phi), xlims=(-3.0, 3.0), ylims=(-3.0, 3.0))
-    traj_plot = scatter!(traj_plot, R_gt .* cos.(phi), R_gt .* sin.(phi))
+    orbit_plot = plot(R .* cos.(ϕ), R .* sin.(ϕ), xlims=(-3.0, 3.0), ylims=(-3.0, 3.0))
+    orbit_plot = scatter!(orbit_plot, R_gt .* cos.(ϕ), R_gt .* sin.(ϕ))
 
     # Plotting the potential
     u0 = Array(range(0.01, 1.0, step = 0.01))
@@ -90,7 +91,7 @@ cb = function(p,l,pred)
     pot_plot = plot(u0, y0)
     pot_plot = plot!(pot_plot, u0, z0, ylims=(-1.5, 0.0))
 
-    display(plot(traj_plot, pot_plot, layout=(2,1), size=(1200, 800)))
+    display(plot(orbit_plot, pot_plot, layout=(2,1), size=(1200, 800)))
     return l < 1e-4
 end
 

@@ -1,6 +1,4 @@
 module Qtils
-using Flux: Zygote
-using Base: Real, Number
 using Zygote: @adjoint
 """
 A package containing utilities that are used to analyze cosmological data in 
@@ -9,7 +7,7 @@ Also contains other helper functions for the Master thesis project.
 """
 
 using Flux, DiffEqFlux, QuadGK, DifferentialEquations, Zygote
-using DataFrames, CSV, Statistics, LinearAlgebra, Random
+using DataFrames, CSV, Statistics, LinearAlgebra, Random, Distributions
 
     """
     Function that allows to perfom predictions using a neural network for an array of inputs.
@@ -127,28 +125,9 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
     2. `data`: Dataframe which contains the exprimental data.
     3. `nparams`: The number of parameters of the model.
     """
-    function reducedchisquared(model::AbstractArray, data::DataFrame, nparams::Number)
+    function reducedχ2(model::AbstractArray, data::DataFrame, nparams::Number)
         n = nrow(data)
         return sum(abs2, (model .- data.mu) ./ (data.me)) ./ (n - nparams)
-    end
-
-    """
-    Function to calculate the reduced χ² statistical measure 
-    for a given model prediction, groundtruth and a fixed standard error/deviation.
-    The array which contains the experimental data can have multiple rows, 
-    but of course the number of rows of the data should equal the number of 
-    rows of the model output.
-    Also, the data in all rows should have the same variance σ.
-    
-    Arguments:
-    1. `model`: Array that contains the model predictions.
-    2. `data`: Dataframe which contains the exprimental data.
-    3. `nparams`: The number of parameters of the model.
-    4. `σ`: Standard error/deviation of the datapoints.
-    """
-    function reducedchisquared(model::AbstractArray, data::AbstractArray, nparams::Number, σ::Number)
-        n = size(data,2)
-        return sum(abs2, (model .- data) ./ σ) ./ (n - nparams)
     end
 
     """
@@ -282,7 +261,6 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
     exactly one value for the distance modulus when it is drawn.
 
     Arguments:
-    Arguments:
     1. `data`: Dataframe containing the supernove observations.
     2. `ratio`: Relative size of the sample compared to the whole population.
     3. `uniquez`: The unique redshifts in the data.
@@ -299,6 +277,25 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random
         end
         delete!(population, sort(idx_list))
         return sample(population, ratio)
+    end
+
+    """
+    Function to resample data with the given standard deviation, 
+    assuming a gaussian distribution of each datapoint.
+
+    Arguments:
+    1. `df`: Dataframe with two fields, named :mu and :me giving the datapoint and its standard error σ.
+    """
+    function resample(df::AbstractDataFrame)
+        resampled_df = DataFrame(z = Real[], mu = Real[], me = Real[])
+        for idx in 1:nrow(df)
+            z = df[idx, :z]
+            σ = df[idx, :me]
+            pdf = Normal(df[idx, :mu], σ)
+            μ =  rand(pdf, 1)[1]
+            push!(resampled_df, [z, μ, σ])
+        end
+        return resampled_df
     end
 
     """

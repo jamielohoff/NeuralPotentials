@@ -42,7 +42,7 @@ end
 
 function loss(params)
     pred = predict(params)
-    µ = mu(uniquez, pred[3,:])
+    µ = mu(uniquez, pred[end,:])
     return sum(abs2, µ .- averagedata.mu), pred
 end
 

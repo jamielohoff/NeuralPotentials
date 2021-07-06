@@ -10,7 +10,8 @@ const H0 = 0.07 # 1 / Gyr
 const c = 306.4 # in Mpc / Gyr
 const G = 4.475e-53 # in Mpc^3 / (Gyr^2 * planck mass)
 
-p = 0.311 # 0.25 .+  0.75 .* rand(Float32, 1)
+Ω_m_0 = 0.311
+p = Ω_m_0 # 0.25 .+  0.75 .* rand(Float32, 1)
 ps = vcat(p, rand(Float32, 2) .- 1.0)
 tspan = (0.0, 7.0)
 u0 = [p[1], 1.0, 0.0]
@@ -37,11 +38,11 @@ end
 
 problem = ODEProblem(friedmann!, u0, tspan, p)
 
-### Bootstrap Loop
+### Bootstrap Loop 
 itmlist = DataFrame(params = Array[], Ω = Array[], μ = Array[], EoS = Array[])
 repetitions = 64
 
-dplot = scatter(
+μ_plot = scatter(
             data.z, data.mu, 
             title="Redshift-Magnitude Data",
             xlabel="redshift z",
@@ -65,8 +66,7 @@ lk = ReentrantLock()
     function loss(params)
         pred = predict(params)
         µ = mu(sampledata.z, pred[end,:])
-        return mean((μ - sampledata.mu).^2), pred
-        # return abs(Qtils.reducedchisquared(μ, sampledata, size(params,1)) .- 1.0), pred
+        return Qtils.reducedχ2(μ, sampledata, size(params,1)), pred
     end
     
     cb = function(p, l, pred)
@@ -79,7 +79,7 @@ lk = ReentrantLock()
     opt = ADAM(1e-3)
     @time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=5000)
 
-    u0 = [result.minimizer[1], 1.0, 0.0]
+    u0 = [p, 1.0, 0.0]
     res = Array(solve(problem, Tsit5(), u0=u0, p=result.minimizer[2:end], saveat=uniquez))
     EoS = map(z -> w_DE(z, result.minimizer[2:end]), uniquez)
 
@@ -101,7 +101,7 @@ println("Cosmological parameters: ")
 println("Mass parameter Ω_m = ", mean_params[1], " ± ", std_params[1])
 println("CPL parameters w_0, w_a = ", mean_params[2:end]," ± ", std_params[2:end])
 
-μ_plot = plot!(dplot, uniquez, mean_μ, ribbon=CI_μ, label="fit")
+μ_plot = plot!(μ_plot, uniquez, mean_μ, ribbon=CI_μ, label="fit")
 EoS_plot = plot(uniquez, mean_EoS, ribbon=CI_EoS, 
                 title="Equation of State w", 
                 xlabel="redshift z", 
@@ -118,5 +118,6 @@ EoS_plot = plot(uniquez, mean_EoS, ribbon=CI_EoS,
 Ω_plot = plot!(Ω_plot, uniquez, 1 .- mean_Ω, ribbon=CI_Ω,
                 label="Ω_m"
 )
-plot(μ_plot, EoS_plot, Ω_plot, layout=(3,1), size=(1200, 800))
+result_plot = plot(μ_plot, EoS_plot, Ω_plot, layout=(3,1), size=(1600, 1200))
+savefig(result_plot, "64_sample_CPL_fixed_omega_m.png")
 
