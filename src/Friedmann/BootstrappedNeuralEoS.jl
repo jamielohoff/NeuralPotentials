@@ -1,3 +1,4 @@
+using DifferentialEquations: tanh
 using Flux, DiffEqFlux, DifferentialEquations
 using DataFrames, CSV, Plots, Statistics
 include("../Qtils.jl")
@@ -65,7 +66,7 @@ lk = ReentrantLock()
     sampledata = Qtils.resample(df)
 
     function predict(params)
-        u0 = [params[1] , 1.0, 0.0]
+        u0 = [Ω_m_0 , 1.0, 0.0]
         return Array(solve(problem, Tsit5(), u0=u0, p=params[2:end], saveat=sampledata.z))
     end
     
@@ -81,17 +82,17 @@ lk = ReentrantLock()
         return l < 1.0
     end
 
-    p = 0.25 .+  0.75 .* rand(Float32, 1)
+    p = Ω_m_0 # 0.25 .+  0.75 .* rand(Float32, 1)
     ps = vcat(p, initial_params(w_DE))
     opt = ADAM(1e-2)
     @time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=300)
 
-    u0 = [result.minimizer[1], 1.0, 0.0]
+    u0 = [Ω_m_0, 1.0, 0.0]
     res = Array(solve(problem, Tsit5(), u0=u0, p=result.minimizer[2:end], saveat=uniquez))
     EoS = map(z -> w_DE(z, result.minimizer[2:end])[1], uniquez)
 
     lock(lk)
-    push!(itmlist, [[result.minimizer[1]], res[1,:], mu(uniquez,res[end,:]), EoS])
+    push!(itmlist, [[Ω_m_0], res[1,:], mu(uniquez,res[end,:]), EoS])
     unlock(lk)
     println("Repetition ", rep, " is done!")
 end
@@ -125,5 +126,5 @@ EoS_plot = plot(uniquez, mean_EoS, ribbon=CI_EoS,
                 label="Ω_DE"
 )
 result_plot = plot(μ_plot, EoS_plot, Ω_plot, layout=(3,1), size=(1600, 1200))
-savefig(result_plot, "64_sample_NeuralEoS_fixed_omega_m.png")
+savefig(result_plot, "16_sample_NeuralEoS_fixed_omega_m_tanh.png")
 
