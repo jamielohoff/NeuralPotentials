@@ -101,16 +101,6 @@ using DifferentialEquations, Flux, DiffEqFlux, Distributions, Zygote
         return trajectoryList
     end
 
-    function sample2Dtrajectories(dV::Function, params::Any, initialConditions::AbstractArray, t::AbstractArray)
-        for i in 1:size(initialConditions)[1]
-            u0 = initialConditions[i,:]
-            problem = ODEProblem(ODE, u0, tspan, params)
-            sol = solve(problem, Tsit5(), saveat=t)
-            push!(trajectoryList, Array(sol))
-        end
-        return trajectoryList
-    end
-
     """
     Function to calculate the reduced χ² statistical measure 
     for a given model prediction, groundtruth and a fixed standard error/deviation.
