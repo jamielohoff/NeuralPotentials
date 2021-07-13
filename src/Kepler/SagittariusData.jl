@@ -112,7 +112,7 @@ module SagittariusData
     Arguments:
     1. `star`: DataFrame outputted by the function loadstar(...) that contains the trajectory of a specific star.
     """
-    function starorbit(star::DataFrame)
+    function orbit(star::DataFrame)
         ra = toradian(star.RA) .+ RA_Astar
         dec = toradian(star.DEC) .+ DEC_Astar
 

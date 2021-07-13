@@ -156,7 +156,7 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random, Distributions
     4. `threshold`: The threshold below which we assume the slow roll conditions to be true.
     5. `verbose`: If set to true, the function will print and array which contains the slow roll conditions at every point defined in range.
     """
-    function slowrollsatisfied(NN::FastChain, params::AbstractArray, range::AbstractArray; threshold = 0.01, verbose=false)
+    function slowrollsatisfied(NN::FastChain, params::AbstractArray, range::AbstractArray; threshold=0.01, verbose=false)
         dNN(Q, P) = Zygote.gradient(q -> NN(q, P)[1], Q)[1]
         ddNN(Q, P) = Zygote.hessian(q -> NN(q, P)[1], Q)[1]
         V = map(q -> NN(q, params)[1], range)
