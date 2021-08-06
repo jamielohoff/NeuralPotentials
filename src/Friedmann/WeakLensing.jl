@@ -1,6 +1,5 @@
-using Zygote : @adjoint
-using Flux, DiffEqFlux, DifferentialEquations
-using DataFrames, CSV, Plots, Statistics, SpecialFunctions, QuadGK
+using Flux, DiffEqFlux, DifferentialEquations, Quadrature
+using DataFrames, CSV, Plots, Statistics, SpecialFunctions
 include("../Qtils.jl")
 using .Qtils
 
@@ -27,18 +26,21 @@ P(k, ns) = k^ns * T2(k)
 
 
 function G_(z::Real, χ::Real)
-    integral, err = quadgk(x -> q(z)*(x - χ)/x, χ, χ_H, rtol=1e-8)
-    return integral
+    ub = χ_H
+    lb = χ
+    f(x) = q(z)*(x - χ)/x
+    prob = QuadratureProblem(f,lb,ub,p)
+    return solve(prob,QuadGKJL(),reltol=1e-6,abstol=1e-6)[1]
 end
 
 function W_(χ::Real, z::Real, D::Real, Ω_m::Real)   
-    return 1.5*(Ω_m*D*(1+z)*χ)/χ_H^2 * G_(χ, z)
+    return 1.5*(Ω_m*D*(1+z)*χ)/χ_H^2 * G_(z, χ)
 end
 
 # Defining the time-dependent equation of state
 w_DE = FastChain(
-    FastDense(1, 4, relu),
-    FastDense(4, 4, relu),
+    FastDense(1, 16, relu),
+    FastDense(16, 4, relu),
     FastDense(4, 1, tanh) # choose output function such that -1 < w < 1
 )
 

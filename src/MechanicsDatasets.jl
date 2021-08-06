@@ -89,14 +89,15 @@ using DifferentialEquations, Flux, DiffEqFlux, Distributions, Zygote
     """
     Function designed to sample trajectories.
     """
-    function sampletrajectories(ODE, params::Any, initialConditions::AbstractArray, t::AbstractArray)
+    function sampletrajectories(ODE::Function, params::AbstractArray, initialConditions::AbstractArray, t::AbstractArray)
         tspan = (t[1], t[end])
         trajectoryList = []
         for i in 1:size(initialConditions)[1]
             u0 = initialConditions[i,:]
-            problem = ODEProblem(ODE, u0, tspan, params)
+            ps = params[i,:]
+            problem = ODEProblem(ODE, u0, tspan, ps)
             sol = solve(problem, Tsit5(), saveat=t)
-            push!(trajectoryList, Array(sol))
+            push!(trajectoryList, (Array(sol),ps))
         end
         return trajectoryList
     end

@@ -6,7 +6,7 @@ module SagittariusData
     # conversion factor from microarcseconds to radians
     const mastorad = 4.8481368e-9 
     # distance of Sagittarius A* in parsec
-    const D_Astar = 8178 
+    const D_Astar = 8330
     # right ascension and declination of Sagittarius A* in radians
     const RA_Astar = 266.4167 * π/180
     const DEC_Astar = -29.0078 * π/180
@@ -31,7 +31,7 @@ module SagittariusData
     2. `DEC`: Array containing the declinations of an object orbiting a central mass.
     """
     function getangle(RA::AbstractArray, DEC::AbstractArray)
-        return atan.(DEC, RA) .+ π # angle should be in the interval (0, 2π)
+        return mod.(atan.(DEC, RA), 2π) # angle should be in the interval (0, 2π)
     end
 
     """
@@ -84,7 +84,7 @@ module SagittariusData
             dropmissing!(data)
             rename!(data, ["RA", "RA_err", "DEC", "DEC_err"])
             data = parse.(Float32, data)
-            data.RA = -data.RA
+            data.RA = data.RA # removed minus sign here
         end
         if timestamps && velocities
             velocitydata = sagittarius_data[3:end, filter(x -> x in("Date", "RV-"*designation, "e_RV-"*designation), names(sagittarius_data))]
@@ -125,8 +125,8 @@ module SagittariusData
         x_err = sqrt.(D_Astar^2 .+ r.^2) .* sin.(ra_err)
         y_err = sqrt.(D_Astar^2 .+ r.^2) .* sin.(dec_err)
 
-        traj = hcat(r, ϕ, star.t, x_err, y_err)
-        return DataFrame(traj, ["r", "ϕ", "t", "x_err", "y_err"])
+        orbit = hcat(r, ϕ, star.t, x_err, y_err)
+        return DataFrame(orbit, ["r", "ϕ", "t", "x_err", "y_err"])
     end
 
     """
@@ -158,7 +158,7 @@ module SagittariusData
     function centerorbit(star::DataFrame; sortby=:t)
         offset = offsets()
         x = star.r .* cos.(star.ϕ) .- offset.x
-        y = star.r .* sin.(star.ϕ) .- offset.y .+ 0.001
+        y = star.r .* sin.(star.ϕ) .- offset.y
 
         r = sqrt.(x.^2 + y.^2)
         ϕ = getangle(x, y)

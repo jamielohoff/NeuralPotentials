@@ -40,6 +40,7 @@ initialConditions = rand(Float32, (64, 2))
 
 dV = FastChain(
     FastDense(1, 16, relu),
+    FastDense(16, 16, relu),
     FastDense(16, 1)
 )
 

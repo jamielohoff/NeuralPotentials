@@ -1,5 +1,5 @@
 using DifferentialEquations, Flux, DiffEqFlux, Zygote
-using Plots, Statistics, LinearAlgebra, LaTeXStrings, DataFrames
+using Plots, Statistics, LinearAlgebra, LaTeXStrings, DataFrames, Distributions
 include("SagittariusData.jl")
 using .SagittariusData
 
@@ -41,48 +41,55 @@ S2.y_err = 100.0 .* S2.y_err
 r0 = 2.0
 true_v0 = sqrt(G*4.35/r0) # initial velocity
 true_u0 = [1.0/r0, 0.0] 
-true_p = [4.35/(1.2*true_v0*r0)^2]
+true_p = [G*4.35/(1.3*true_v0*r0)^2]
 
 function kepler!(du, u, p, ϕ)
     U = u[1]
     dU = u[2]
 
     du[1] = dU
-    du[2] = G*p[1]-U # - G/c^2 * p[1] * U^2
+    du[2] = p[1]-U # - G/c^2 * p[1] * U^2
 end
 
 problem = ODEProblem(kepler!, true_u0, ϕ0span, true_p)
 
 @time data = Array(solve(problem, Tsit5(), saveat=ϕ0))
 
+function resort(s, θ)
+    A = zeros((size(θ,1),2))
+    buf = Zygote.Buffer(A)
+    arr = hcat(s, θ)
+    arr = arr[sortperm(arr[:,2]), :]
+    for j in 1:size(θ,1)
+        buf[j,:] = arr[j,:]
+    end
+    res = copy(buf)
+    return res[:,1], res[:,2]
+end
+
 function transform(angles, r, φ)
     ι = angles[1]
-    Ω = angles[2]
-    ω = angles[3]
+    Ω = mod(angles[2],2π)
+    ω = mod(angles[3],2π)
 
     δ = Ω - ω
 
     x = r.*cos.(φ)
     y = r.*sin.(φ)
 
-    # display(plot(x, y, zeros(144)))
-
     X = ( cos(Ω)^2*(1-cos(ι)) + cos(ι) ) * x .+ cos(Ω)*sin(Ω)*(1-cos(ι)) * y
     Y = cos(Ω)*sin(Ω)*(1-cos(ι)) * x .+ ( sin(Ω)^2*(1-cos(ι)) + cos(ι) ) * y
     Z = -sin(Ω)*sin(ι) * x .+ cos(Ω)*sin(ι) * y
 
-    # display(plot!(X, Y, Z))
-    # display(plot!(X, Y, zeros(144), camera=(70,50)))
-
-    R = sqrt.(X.^2 + Y.^2)
     ϕ = mod.(atan.(Y,X) .+ δ, 2π)
+    R = sqrt.(X.^2 + Y.^2)
     return R, ϕ
 end
 
 function inversetransform(angles, r, φ)
-    ι = angles[1]
-    Ω = angles[2]
-    ω = angles[3]
+    ι = -angles[1]
+    Ω = mod(angles[2],2π)
+    ω = mod(angles[3],2π)
 
     δ = Ω - ω
 
@@ -90,37 +97,38 @@ function inversetransform(angles, r, φ)
     y = r.*sin.(φ.- δ)
     z = r.*sin.((Ω-π) .- (φ .- δ)).*tan(-ι)
 
-    # display(plot!(x,y,z, label="recovered 3D trajectory"))
-
     X = ( cos(Ω)^2*(1-cos(ι)) + cos(ι) ) * x .+ cos(Ω)*sin(Ω)*(1-cos(ι)) * y .+ sin(Ω)*sin(ι) * z
     Y = cos(Ω)*sin(Ω)*(1-cos(ι)) * x .+ ( sin(Ω)^2*(1-cos(ι)) + cos(ι) ) * y .- cos(Ω)*sin(ι) * z
+
     ϕ = mod.(atan.(Y,X), 2π)
-
-    # display(scatter!(X, Y, zeros(144), xlabel="x", ylabel="y"))
-
     R = sqrt.(X.^2 + Y.^2)
     return R, ϕ
 end
 
-p = [80/180*π, π/3, 0.0]
-R, ϕ = transform(p, 1.0 ./data[1,:], ϕ0)
+angles = [85/180, 1/3, 0.0]
+R, ϕ = transform(angles.*π, 1.0 ./data[1,:], ϕ0)
+
+pdf = Normal(0.0, 0.05)
+noise =  rand(pdf, size(R))
+R = R .+ noise
+
+# pdf = Normal(0.0, 0.02)
+# noise =  rand(pdf, size(ϕ))
+# ϕ = ϕ .+ noise
+
+###
 
 orbit = hcat(R, ϕ)
-star = S2 # DataFrame(orbit, ["r", "ϕ"])
+star = DataFrame(orbit, ["r", "ϕ"])
 
 # starmax = star[findall(x -> x > 5π/4, star.ϕ), :]
 # starmin = star[findall(x -> x ≤ 5π/4, star.ϕ), :]
 # star = outerjoin(starmax,starmin,on=[:r,:ϕ])
 
 ### End -------------------------------------------------- #
-dV = FastChain(
-    FastDense(1, 32, tanh),
-    FastDense(32, 8, tanh),
-    FastDense(8, 2, tanh),
-    FastDense(2, 1)
-)
-ps = vcat(rand(Float32, 4), initial_params(dV))
-
+dV(U,p) = [p[1]] # Removed the gravitational constant G
+ps = vcat(rand(Float32, 5), 0.50*rand(Float32, 1) .+ 0.25 ,)
+# ps = vcat(0.0, angles, true_p)
 
 function neuralkepler!(du, u, p, ϕ)
     U = u[1]
@@ -132,61 +140,67 @@ end
 
 u0 = vcat(1.0/r0, ps[1])
 ϕspan = (0.0, 2π)
-prob = ODEProblem(neuralkepler!, u0, ϕspan, ps[5:end])
-
-function resort(pred, θ)
-    buf = Zygote.Buffer(pred)
-    for j in 1:size(θ,1)
-        idx = findall(x->x==θ[j], pred.t)[1]
-        buf[:,j] = pred[:,idx]
-    end
-    return copy(buf)
-end
+prob = ODEProblem(neuralkepler!, u0, ϕspan, ps[6:end])
 
 function predict(params)
-    s, θ = inversetransform(params[2:4].*π, star.r, star.ϕ)
-    u0 = vcat(1.0/s[1], params[1])
-    pred = solve(prob, Tsit5(), u0=u0, p=params[5:end], saveat=θ)
-    # pred = resort(pred, θ)
-    _R, _ϕ = transform(params[2:4].*π, 1 ./ pred[1,:], θ)
-    return hcat(_R, _ϕ)
+    _s, _θ = inversetransform(params[3:5].*π, star.r, star.ϕ)
+    s, θ = resort(_s, _θ)
+    pred = solve(prob, Tsit5(), u0=params[1:2], p=params[6:end], saveat=θ)
+    _R, _ϕ = transform(params[3:5].*π, 1 ./ pred[1,:], _θ)
+
+    Zygote.ignore() do 
+        # println("s[1]: ", 1.0/params[1])
+        # println("θ - ϕ0: ", θ .- ϕ0)
+        # println(" ")
+        # println("pred - data:", pred[1,:] .- data[1,:])
+    end
+
+    return vcat(reshape(_R,1,:), reshape(_ϕ,1,:))
+end
+
+function trigonometricloss(R, ϕ)
+    return sum(abs2, R.*cos.(ϕ) .- star.r.*cos.(star.ϕ)) + sum(abs2, R.*sin.(ϕ) .- star.r.*sin.(star.ϕ))
 end
 
 function loss(params) 
     pred = predict(params)
-    return sum( (1.0 ./ pred[:,1] .- 1.0 ./ star.r).^2 ), pred
+    # return sum(abs2, pred[1,:] .- star.r), pred
+    # return sum(abs2, 1.0 ./ pred[1,:] .- 1.0 ./ star.r), pred
+    return trigonometricloss(pred[1,:], pred[2,:]), pred
 end
 
-opt = ADAM(1e-2)
+opt = Flux.Optimiser(ClipValue(1e-5), AMSGrad(1e-3))
+# opt = Flux.Optimiser(ClipValue(1e-5), ADAM(1e-3))
+# opt = Flux.Optimiser(ClipValue(1e-5), NADAM(0.001))
 
 i = 0
 
 cb = function(p,l,pred)
     println("Epoch: ", i)
     println("Loss: ", l)
-    println("Initial conditions: ", p[1])
-    println("Rotation angles: ", p[2:4])
-    println("Angular fit: ", sum((star.ϕ .- pred[:,2]).^2))
-    if i % 1 == 0
-        orbit_plot = plot(cos.(pred[:,2]) .* pred[:,1], sin.(pred[:,2]) .* pred[:,1], # xlims=(-10.0, 10.0), ylims=(-10.0, 10.0),
+    println("Initial conditions: ", p[1:2])
+    println("Rotation angles: ", p[3:5], " true value: ", angles)
+    println("Parameters of the potential: ", p[6:end], " true value: ", true_p)
+    println("Angular fit: ", sum(abs2, star.ϕ .- pred[2,:]))
+    if i % 100 == 0
+        orbit_plot = plot(cos.(pred[2,:]) .* pred[1,:], sin.(pred[2,:]) .* pred[1,:], xlims=(-7.5, 7.5), ylims=(-7.5, 7.5),
                             label="fit using neural network",
                             xlabel=L"x\textrm{ coordinate in }10^{-2}pc",
                             ylabel=L"y\textrm{ coordinate in }10^{-2}pc",
                             title="position of the test mass and potential"
         )
         orbit_plot = scatter!(orbit_plot, star.r .* cos.(star.ϕ), star.r .* sin.(star.ϕ), label="rotated data")
-        # orbit_plot = scatter!(orbit_plot, cos.(ϕ0)./data[1,:], sin.(ϕ0)./data[1,:], label="original data")
+        orbit_plot = scatter!(orbit_plot, cos.(ϕ0)./data[1,:], sin.(ϕ0)./data[1,:], label="original data")
         orbit_plot = scatter!(orbit_plot, [cos.(star.ϕ[1]).*star.r[1]], [sin.(star.ϕ[1]).*star.r[1]], label="initial point")
 
         # Plotting the potential
         R0 = Array(range(0.3, 11.5, length=100))
-        dv = map(u -> dV(u, p[5:end])[1], 1 ./ R0)
-        # dv0 = map(u -> dV0(u, [4.152])[1], R0)
-        dv0 = G*true_p[1] * ones(100)
-        pot_plot = plot(1 ./ R0, dv, ylims=(-0.1, 0.5))
+        dv = map(u -> dV(u, p[6:end])[1], 1 ./ R0)
+        dv0 = map(u -> dV(u, true_p)[1], 1 ./ R0)
+        pot_plot = plot(1 ./ R0, dv, ylims=(-0.1, 0.8))
         pot_plot = plot!(pot_plot, 1 ./ R0, dv0)
 
-        result_plot = plot(orbit_plot, pot_plot, layout=(2,1), size=(1600, 1200), legend=:bottomright)
+        result_plot = plot(orbit_plot, pot_plot, layout=(2,1), size=(1200, 800), legend=:bottomright)
         display(plot(result_plot))
     end
     global i+=1
@@ -194,5 +208,5 @@ cb = function(p,l,pred)
     
 end
 
-@time result = DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=150000)
+@time result = DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=50000)
 

@@ -194,6 +194,18 @@ git-tree-sha1 = "3f71217b538d7aaee0b69ab47d9b7724ca8afa0d"
 uuid = "a8cc5b0e-0ffa-5ad4-8c14-923d3ee1735f"
 version = "4.0.4"
 
+[[Cuba]]
+deps = ["Cuba_jll", "LinearAlgebra"]
+git-tree-sha1 = "8fb163273547563ee7a0906b880b721646bf0f86"
+uuid = "8a292aeb-7a57-582c-b821-06e4c11590b1"
+version = "2.2.0"
+
+[[Cuba_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
+git-tree-sha1 = "bda7a143df7c9160f9d7ea9e494f916718191583"
+uuid = "3bed1096-5ab2-53a1-92e2-6c1cc31d0f4b"
+version = "4.2.2+0"
+
 [[DataAPI]]
 git-tree-sha1 = "dfb3b7e89e395be1e25c2ad6d7690dc29cc53b1d"
 uuid = "9a962f9c-6df0-11e9-0e5d-c546b8b5ee8a"
@@ -525,6 +537,12 @@ version = "1.0.0"
 git-tree-sha1 = "03d381f65183cb2d0af8b3425fde97263ce9a995"
 uuid = "42e2da0e-8278-4e71-bc24-59509adca0fe"
 version = "1.0.0"
+
+[[HCubature]]
+deps = ["Combinatorics", "DataStructures", "LinearAlgebra", "QuadGK", "StaticArrays"]
+git-tree-sha1 = "134af3b940d1ca25b19bc9740948157cee7ff8fa"
+uuid = "19dc6840-f33b-545b-b366-655c7e3ffd49"
+version = "1.5.0"
 
 [[HTTP]]
 deps = ["Base64", "Dates", "IniFile", "MbedTLS", "NetworkOptions", "Sockets", "URIs"]
@@ -859,6 +877,12 @@ git-tree-sha1 = "61709e7d68c73c34d8d8b8ece5a6f35c41840c59"
 uuid = "961ee093-0014-501f-94e3-6117800e7a78"
 version = "5.16.0"
 
+[[MonteCarloIntegration]]
+deps = ["Distributions", "Random"]
+git-tree-sha1 = "487fd96cc26bbadbab9819259b64ed78c1b26511"
+uuid = "4886b29c-78c9-11e9-0a6e-41e1f4161f7b"
+version = "0.0.2"
+
 [[MozillaCACerts_jll]]
 uuid = "14a3606d-f60d-562e-9121-12d972cd8159"
 
@@ -1075,6 +1099,12 @@ deps = ["DataStructures", "LinearAlgebra"]
 git-tree-sha1 = "12fbe86da16df6679be7521dfb39fbc861e1dc7b"
 uuid = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
 version = "2.4.1"
+
+[[Quadrature]]
+deps = ["CommonSolve", "DiffEqBase", "Distributions", "ForwardDiff", "HCubature", "LinearAlgebra", "MonteCarloIntegration", "QuadGK", "Reexport", "Requires", "ReverseDiff", "Zygote", "ZygoteRules"]
+git-tree-sha1 = "4785d826cb7945c3122e600f7ac9166a15fdca96"
+uuid = "67601950-bd08-11e9-3c89-fd23fb4432d2"
+version = "1.8.1"
 
 [[QuasiMonteCarlo]]
 deps = ["Distributions", "LatinHypercubeSampling", "LatticeRules", "Sobol"]
