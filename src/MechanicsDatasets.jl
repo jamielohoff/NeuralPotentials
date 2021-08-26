@@ -14,11 +14,11 @@ using DifferentialEquations, Flux, DiffEqFlux, Distributions, Zygote
     6. `σ`: Standard deviation of the gaussian noise.
     """
     function potentialproblem1D(V::Function, 
-        u0::AbstractArray, 
-        p::AbstractArray, 
-        t::AbstractArray; 
-        addnoise=false, 
-        σ=0.01)
+                                u0::AbstractArray, 
+                                p::AbstractArray, 
+                                t::AbstractArray; 
+                                addnoise=false, 
+                                σ=0.01)
 
         dV(x,p) = Zygote.gradient(x -> V(x,p)[1], x)[1]
 
@@ -43,45 +43,44 @@ using DifferentialEquations, Flux, DiffEqFlux, Distributions, Zygote
     end
 
     """
-    Function that solves a 2D potential problem for a given potential gradient.
-    This function is also able to add gaussian noise to the data, 
-    but all columns have the same variance.
+    Function that solves the kepler problem for a given potential.
+    This function is also able to add gaussian noise to the radial coordinate.
 
     Arguments: 
     1. `dV`: Gradient of the potential.
     2. `u0`: Initial conditions of the ODE.
-    3. `p`: Array of parameters for the gradient
-    4. `t`: Array of timepoints t where we want to know the solution of the potential problem
-    5. `addnoise`: Boolean variable to quantify whether we want to add gaussian noise or not.
-    6. `σ`: Standard deviation of the gaussian noise.
+    3. `p`: Array of parameters for the gradient of the potential.
+    4. `ϕ`: Array containing the polar angles where we want to know the solution of the Kepler problem.
+    5. `addnoise`: Boolean variable to quantify whether we want to 
+                    add gaussian noise to the radial coordinate or not.
+    6. `σ`: Variance of the gaussian noise.
     """
-    function potentialproblem2D(V::Function, 
-        u0::AbstractArray, 
-        p::AbstractArray, 
-        t::AbstractArray; 
-        addnoise=false, 
-        σ=0.01)
+    function keplerproblem(dV::Function, 
+                            u0::AbstractArray, 
+                            p::AbstractArray, 
+                            ϕ::AbstractArray; 
+                            addnoise=false, 
+                            σ=0.01)
 
-        tspan = (t[1], t[end])
+        function kepler!(du, u, p, ϕ)
+            U = u[1]
+            dU = u[2]
+            t = u[3]
 
-        dV(x, p) = Zygote.gradient(x -> V(x,p)[1], x)[1]
-
-        function kepler!(du, u, p, t)
-            x = u[1:2]
-            dx = u[3:4]
-
-            du[1:2] = dx
-            du[3:4] = -dV(x, p)
+            du[1] = dU
+            du[2] = dV(U, p[2:end])[1] - U
+            du[3] = p[1]/U^2
         end
 
-        problem = ODEProblem(kepler!, u0, tspan, p)
+        ϕspan = (ϕ[1], ϕ[end])
+        problem = ODEProblem(kepler!, u0, ϕspan, p)
 
-        @time solution = solve(problem, Tsit5(), u0=u0, p=p, saveat=t)
+        @time solution = Array(solve(problem, Tsit5(), u0=u0, p=p, saveat=ϕ))
 
         if addnoise
             pdf = Normal(0.0, σ)
-            noise =  rand(pdf, size(solution))
-            solution = solution[1:4,:] .+ noise
+            noise =  rand(pdf, size(solution[1,:]))
+            solution = solution[1,:] - noise
         end
         return solution
     end
