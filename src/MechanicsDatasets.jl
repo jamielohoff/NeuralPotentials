@@ -72,15 +72,15 @@ using DifferentialEquations, Flux, DiffEqFlux, Distributions, Zygote
             du[3] = p[1]/U^2
         end
 
-        ϕspan = (ϕ[1], ϕ[end])
+        ϕspan = (0.0, 10π) # (ϕ[1], ϕ[end])
         problem = ODEProblem(kepler!, u0, ϕspan, p)
 
         @time solution = Array(solve(problem, Tsit5(), u0=u0, p=p, saveat=ϕ))
 
         if addnoise
             pdf = Normal(0.0, σ)
-            noise =  rand(pdf, size(solution[1,:]))
-            solution = solution[1,:] - noise
+            noise = rand(pdf, size(solution[1,:]))
+            solution[1,:] = solution[1,:] .+ noise
         end
         return solution
     end

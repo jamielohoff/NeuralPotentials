@@ -31,12 +31,11 @@ dV(U,p) = [p[1]*(1.0 - U^2/c^2)]
 
 data = MechanicsDatasets.keplerproblem(dV, true_u0, true_p, ϕ0)
 
-angles = [35.0, 70.0, 20.0].*π/180 # vcat(S2_orbitalelements.i, S2_orbitalelements.Ω, S2_orbitalelements.ω).*π/180 # 
+angles = [50.0, 100.0, 45.0].*π/180 # vcat(S2_orbitalelements.i, S2_orbitalelements.Ω, S2_orbitalelements.ω).*π/180 # 
 r, ϕ = SagittariusData.transform(angles, 1.0./data[1,:], ϕ0)
 
 orbit = hcat(r, ϕ, data[3,:])
 star = DataFrame(orbit, ["r", "ϕ", "t"])
-
 star = sort!(star, [:t])
 
 ### End -------------------------------------------------- #
@@ -48,37 +47,26 @@ function neuralkepler!(du, u, p, ϕ)
     dU = u[2]
 
     du[1] = dU
-    du[2] = dV(U, p)[1]-U
+    du[2] = dV(U, p)[1] - U
 end
 
 u0 = ps[1:2]
 ϕspan = (0.0, 10π)
-prob = ODEProblem(neuralkepler!, u0, ϕspan, ps[6:end])
+problem = ODEProblem(neuralkepler!, u0, ϕspan, ps[6:end]) 
 
 function predict(params)
-    s, θ = SagittariusData.inversetransform(angles, star.r, star.ϕ) # vcat(params[3:4],Zygote.hook(-, params[5])).*π
-    # println(sum(abs2, s .- 1.0./data[1,:]))
-    # println(sum(abs2, θ .- ϕ0))
-    pred = Array(solve(prob, Tsit5(), u0=vcat(1.0/s[1],abs(1e-4*params[2])), p=params[6:end], saveat=θ))
-    r, ϕ = SagittariusData.transform(angles, 1.0./pred[1,:], θ) # vcat(Zygote.@showgrad(params[3:5])).*π
-    return vcat(reshape(r,1,:), reshape(ϕ,1,:))
-end
-
-function geometricloss(r, ϕ)
-    return sum(abs2, r.*cos.(ϕ) .- star.r.*cos.(star.ϕ)) + sum(abs2, r.*sin.(ϕ) .- star.r.*sin.(star.ϕ))
-end
-
-function reducedχ2(r, ϕ)
-    return sum(abs2, (r.*cos.(ϕ) .- star.r.*cos.(star.ϕ))./star.x_err) + sum(abs2, (r.*sin.(ϕ) .- star.r.*sin.(star.ϕ))./star.y_err)
+    s, θ = SagittariusData.inversetransform(Zygote.@showgrad(vcat(params[3:4],Zygote.hook(-, params[5]))).*π, star.r, star.ϕ) # Zygote.hook(-, params[5])
+    pred = Array(solve(problem, Tsit5(), u0=vcat(1.0/s[1], 0.0), p=params[6:end], saveat=θ)) # params[2]
+    r, ϕ = SagittariusData.transform(Zygote.@showgrad(vcat(params[3:4],Zygote.hook(+, params[5]))).*π, 1.0./pred[1,:], θ) # Zygote.hook(+, params[5])
+    return vcat(reshape(r,1,:), reshape(ϕ,1,:), reshape(s,1,:), reshape(θ,1,:))
 end
 
 function loss(params) 
-    pred = predict(Zygote.@showgrad(params))
+    pred = predict(params)
     return sum(abs2, 1.0 ./ star.r .- 1.0 ./ pred[1,:]), pred
 end
 
 opt = ADAM(1e-3)
-
 epoch = 0
 
 cb = function(p,l,pred)
@@ -97,7 +85,10 @@ cb = function(p,l,pred)
         )
         orbit_plot = scatter!(orbit_plot, star.r .* cos.(star.ϕ), star.r .* sin.(star.ϕ), label="rotated data") # , xerror = S2.x_err, yerror=S2.y_err)
         # orbit_plot = scatter!(orbit_plot, cos.(S2.ϕ).*S2.r, sin.(S2.ϕ).*S2.r, label="S2 data")
-        orbit_plot = scatter!(orbit_plot, [cos.(star.ϕ[1]).*star.r[1]], [sin.(star.ϕ[1]).*star.r[1]], label="initial point")
+        # orbit_plot = scatter!(orbit_plot, [cos.(star.ϕ[1]).*star.r[1]], [sin.(star.ϕ[1]).*star.r[1]], label="initial point")
+
+        orbit_plot = plot!(orbit_plot, pred[3,:] .* cos.(pred[4,:]), pred[3,:] .* sin.(pred[4,:]), label="rotated data")
+        orbit_plot = scatter!(orbit_plot, cos.(ϕ0)./data[1,:], sin.(ϕ0)./data[1,:] , label="rotated data")
 
         # Plotting the potential
         R0 = Array(range(0.3, 11.5, length=100))
@@ -110,7 +101,7 @@ cb = function(p,l,pred)
         display(plot(result_plot))
     end
     global epoch+=1
-    return false
+    return l < 1e-4
     
 end
 
