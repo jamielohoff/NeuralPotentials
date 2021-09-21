@@ -242,6 +242,15 @@ module SagittariusData
         return Array([X, Y, Z])
     end
 
+    """
+    Function that...
+
+    """
+    function isprograde(ϕ::AbstractArray)
+        Δϕ = ϕ[2:end] .- ϕ[1:end-1]
+        idx = findall(x -> x > 0.0, Δϕ)
+        return length(idx) > 10
+    end
 
     """
     Function that corrects the phase when we have orbits that go for more than one revolution.
@@ -250,17 +259,30 @@ module SagittariusData
 
     Arguments:
     1. `ϕ`: Array that contains the polar angle of the trajectory/orbit. 
+    1. `ι`: Inclination angle... 
     """
     function correctphase(ϕ::AbstractArray)
         buf = Zygote.Buffer(zeros((size(ϕ,1),1)))
         phase = 0.0
-        for j ∈ 1:size(ϕ,1)-1
-            buf[j,1] = ϕ[j] + phase
-            if abs(ϕ[j+1] - ϕ[j]) > 5.0
-                phase += 2π
+        counter = 0
+        if isprograde(ϕ)
+            for j ∈ 1:size(ϕ,1)-1
+                buf[j,1] = ϕ[j] + phase
+                if ϕ[j+1] - ϕ[j] ≤ 0.0
+                    phase += 2π
+                end
+            end
+        else
+            for j ∈ 1:size(ϕ,1)-1
+                buf[j,1] = ϕ[j] + phase
+                if ϕ[j+1] - ϕ[j] ≥ 0.0
+                    counter += 1
+                    phase -= 2π
+                end
             end
         end
         buf[end,1] = ϕ[end] + phase
+        buf[:,1] = buf[:,1] .+ 2π*counter
         res = copy(buf)
         return res[:,1]
     end
@@ -278,8 +300,12 @@ module SagittariusData
     2. `r`: Radial coordinate of the trajectory in the x-y-plane.
     3. `ϕ`: Polar angle of the original trajectory in the x-y-plane.
     """
-    function transform(angles::AbstractArray, r::AbstractArray, ϕ::AbstractArray)
-        ι = mod(angles[1],2π)
+    function transform(angles::AbstractArray, r::AbstractArray, ϕ::AbstractArray, prograde::Bool)
+        if prograde
+            ι = mod(angles[1],π/2)
+        else
+            ι = mod(angles[1],π/2) + π/2
+        end
         Ω = mod(angles[2],2π)
         ω = mod(angles[3],2π)
     
@@ -294,7 +320,7 @@ module SagittariusData
         _X, _Y, _Z = rotation(X, Y, Z, m, mod(ω + Ω,2π))
     
         φ = mod.(atan.(_Y,_X), 2π)
-        φ = SagittariusData.correctphase(φ)
+        φ = correctphase(φ)
         R = sqrt.(_X.^2 + _Y.^2)
         return R, φ
     end
@@ -312,8 +338,12 @@ module SagittariusData
     2. `r`: Radial coordinate of the trajectory in the x-y-plane.
     3. `ϕ`: Polar angle of the original trajectory in the x-y-plane.
     """
-    function inversetransform(angles::AbstractArray, r::AbstractArray, ϕ::AbstractArray)
-        ι = mod(angles[1],2π)
+    function inversetransform(angles::AbstractArray, r::AbstractArray, ϕ::AbstractArray, prograde::Bool)
+        if prograde
+            ι = mod(angles[1],π/2)
+        else
+            ι = mod(angles[1],π/2) + π/2
+        end
         Ω = mod(angles[2],2π)
         ω = mod(angles[3],2π)
         
@@ -328,7 +358,7 @@ module SagittariusData
         _X, _Y, _Z = rotation(X, Y, Z, n, ι)
 
         φ = mod.(atan.(_Y,_X), 2π)
-        φ = SagittariusData.correctphase(φ)
+        φ = correctphase(φ)
         R = sqrt.(_X.^2 + _Y.^2)
         return R, φ
     end

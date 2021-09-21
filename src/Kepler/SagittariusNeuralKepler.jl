@@ -43,8 +43,7 @@ star = sort!(star, [:t])
 dV = FastChain(
     FastDense(1, 8, tanh),
     FastDense(8, 4, tanh),
-    FastDense(4, 2, tanh),
-    FastDense(2, 1)
+    FastDense(4, 1)
 )
 ps = vcat(15.0 .+ rand(Float32, 1), rand(Float32, 1), 0.5*rand(Float32, 3), initial_params(dV))
 
@@ -61,10 +60,10 @@ u0 =  [1.0/r0, 0.0] # ps[1:2]
 problem = ODEProblem(neuralkepler!, u0, ϕspan, true_p[2:end]) # ps[6:end]
 
 function predict(params)
-    s, θ = SagittariusData.inversetransform(vcat(params[3:4],Zygote.hook(-, params[5])).*π, star.r, star.ϕ) # 
-    pred = Array(solve(problem, Tsit5(), u0=vcat(1.0/s[1], params[2]), p=params[6:end], saveat=θ)) #
-    r, ϕ = SagittariusData.transform(vcat(Zygote.@showgrad(params[3:5])).*π, 1.0./pred[1,:], θ) # 
-    return vcat(reshape(r,1,:), reshape(ϕ,1,:))
+    s, θ = SagittariusData.inversetransform(Zygote.@showgrad(vcat(params[3:4],Zygote.hook(-, params[5]))).*π, star.r, star.ϕ) # Zygote.hook(-, params[5])
+    pred = Array(solve(problem, Tsit5(), u0=vcat(1.0/s[1], 0.0), p=params[6:end], saveat=θ)) # params[2]
+    r, ϕ = SagittariusData.transform(Zygote.@showgrad(vcat(params[3:4],Zygote.hook(+, params[5]))).*π, 1.0./pred[1,:], θ) # Zygote.hook(+, params[5])
+    return vcat(reshape(r,1,:), reshape(ϕ,1,:), reshape(s,1,:), reshape(θ,1,:))
 end
 
 function geometricloss(r, ϕ)
@@ -77,7 +76,6 @@ end
 
 function loss(params) 
     pred = predict(params)
-    # return sum(abs2, star.r .- pred[1,:]), pred
     return sum(abs2, 1.0 ./ star.r .- 1.0 ./ pred[1,:]), pred
 end
 
