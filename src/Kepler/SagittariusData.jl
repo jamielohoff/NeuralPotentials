@@ -5,11 +5,6 @@ module SagittariusData
     const kmstopcyr = 1.022e-6
     # conversion factor from microarcseconds to radians
     const mastorad = 4.8481368e-9 
-    # distance of Sagittarius A* in parsec
-    const D_Astar = 8178 
-    # right ascension and declination of Sagittarius A* in radians
-    const RA_Astar = 266.4167 * π/180
-    const DEC_Astar = -29.0078 * π/180
     const starlist = ["S1", "S2", "S4", "S8", "S9", "S12", "S13", "S14", "S17", "S18", "S19", "S21", 
                         "S24", "S31", "S38", "S54", "S55"]
 
@@ -21,6 +16,16 @@ module SagittariusData
     """
     function toradian(mas::AbstractArray)
         return mastorad .* mas
+    end
+
+    """
+    Function to convert from microarcseconds to radians.
+
+    Arguments: 
+    1. `rad`: Array containing positions in microarcseconds
+    """
+    function tomas(rad::AbstractArray)
+        return rad ./ mastorad 
     end
 
     """
@@ -44,7 +49,6 @@ module SagittariusData
     2. `DEC`: Array containing the declinations of an object orbiting Sagittarius A*.
     """
     function angulardistance(RA::AbstractArray, DEC::AbstractArray)
-        # cosθ = sin(DEC_Astar) * sin.(DEC) .+ cos(DEC_Astar) * cos.(DEC) .* cos.(RA_Astar .- RA)
         cosθ = cos(DEC_Astar) .* cos.(DEC) .+ sin(DEC_Astar) .* sin.(DEC) .* cos.(RA_Astar .- RA)
         return acos.(cosθ)
     end
@@ -75,19 +79,19 @@ module SagittariusData
                                                                     "oDE-"*designation, 
                                                                     "e_oDE-"*designation), names(sagittarius_data))]
             dropmissing!(data)
-            rename!(data, ["t", "RA", "RA_err", "DEC", "DEC_err"])
+            rename!(data, [:t, :RA, :RA_err, :DEC, :DEC_err])
             data = parse.(Float32, data)
             data.t = data.t .- 1992.0 # normalize timestamps such that they start from year 0
         else
             data = sagittarius_data[3:end, filter(x -> x in("oRA-"*designation, "e_oRA-"*designation, "oDE-"*designation, "e_oDE-"*designation), names(sagittarius_data))]
             dropmissing!(data)
-            rename!(data, ["RA", "RA_err", "DEC", "DEC_err"])
+            rename!(data, [:RA, :RA_err, :DEC, DEC_err])
             data = parse.(Float32, data)
         end
         if timestamps && velocities
             velocitydata = sagittarius_data[3:end, filter(x -> x in("Date", "RV-"*designation, "e_RV-"*designation), names(sagittarius_data))]
             dropmissing!(velocitydata)
-            rename!(velocitydata, ["t", "RV", "RV_err"])
+            rename!(velocitydata, [:t, :RV, RV_err])
             velocitydata = parse.(Float32, velocitydata)
 
             velocitydata.RV = kmstopcyr .* velocitydata.RV
@@ -109,61 +113,26 @@ module SagittariusData
 
     Arguments:
     1. `star`: DataFrame outputted by the function loadstar(...) that contains the trajectory of a specific star.
+    2. `D`: Distance of Sagittarius A* in kpc
     """
-    function orbit(star::DataFrame)
-        ra = toradian(star.RA) .+ RA_Astar
-        dec = toradian(star.DEC) .+ DEC_Astar
+    function orbit(star::DataFrame, D::Real)
+        D = D*1e5
+        RA = SagittariusData.toradian(star.RA)
+        DEC = SagittariusData.toradian(star.DEC)
+        RA_err = SagittariusData.toradian(star.RA_err)
+        DEC_err = SagittariusData.toradian(star.DEC_err)
 
-        ϕ = getangle(toradian(star.RA), toradian(star.DEC))
-        # println("θ: ", angulardistance(ra, dec))
-        r = D_Astar .* tan.(angulardistance(ra, dec))
+        x = D*tan.(RA)
+        y = D*tan.(DEC)
+        r = sqrt.(x.^2 + y.^2)
+        ϕ = mod.(atan.(y,x), 2π)
 
-        ra_err = toradian(star.RA_err)
-        dec_err = toradian(star.DEC_err)
-
-        x_err = zeros(size(r,1)) # sqrt.(D_Astar^2 .+ r.^2) .* tan.(ra_err)
-        y_err = zeros(size(r,1)) # sqrt.(D_Astar^2 .+ r.^2) .* tan.(dec_err)
+        x_err = sqrt.((D)^2 .+ r.^2) .* tan.(RA_err)
+        y_err = sqrt.((D)^2 .+ r.^2) .* tan.(DEC_err)
 
         traj = hcat(r, ϕ, star.t, x_err, y_err)
-        return DataFrame(traj, ["r", "ϕ", "t", "x_err", "y_err"])
-    end
 
-    """
-    Function that returns the coordinates of Sagittarius A*,
-    such that we can center the coordinate system around the black hole.
-    Outputs a DataFrame containing the the x- and y-offsets, 
-    i.e. the position of Sagittarius A*.
-    """
-    function offsets()
-        offsets = DataFrame(x = Real[], y = Real[])
-        ϕ_Astar = getangle([RA_Astar], [DEC_Astar])
-        R_Astar = sqrt.(RA_Astar.^2 .+ DEC_Astar.^2)# D_Astar * tan.(angulardistance([RA_Astar], [DEC_Astar]))
-
-        x_offset_Astar = R_Astar .* cos.(ϕ_Astar)
-        y_offset_Astar = R_Astar .* sin.(ϕ_Astar)
-        push!(offsets, [x_offset_Astar[1], y_offset_Astar[1]])
-        return offsets
-    end 
-
-    """
-    Function to center the orbit in polar coordinates such that Sagittarius A* is 
-    at polar coordinates (r=0,ϕ=0). Returns a DataFrame containing the centered coordinates 
-    in polar and cartesian coordinates.
-
-    Arguments:
-    1. `star`: DataFrame containing data about a star from the nuclear star cluster.
-    2. `sortby`: Sort by the given field, e.g. :ϕ or :t.
-    """
-    function centerorbit(star::DataFrame; sortby=:t)
-        offset = offsets()
-        x = star.R .* cos.(star.ϕ) .- offset.x
-        y = star.R .* sin.(star.ϕ) .- offset.y
-
-        r = star.r # sqrt.(x.^2 + y.^2)
-        ϕ = getangle(x, y)
-
-        traj = hcat(r, ϕ, x, star.x_err, y, star.y_err, star.t)
-        return sort!(DataFrame(traj, ["r", "ϕ", "x", "x_err", "y", "y_err", "t"]), [sortby])
+        return DataFrame(traj, [:r, :ϕ, :t, :x_err, :y_err])
     end
 
     """
@@ -361,6 +330,18 @@ module SagittariusData
         φ = correctphase(φ)
         R = sqrt.(_X.^2 + _Y.^2)
         return R, φ
+    end
+
+    """
+    Function that 
+    """
+    function converttoangles(r, ϕ, D)
+        # D in kpc
+        ra = atan.(r.*cos.(ϕ), D*1e5)
+        dec = atan.(r.*sin.(ϕ), D*1e5)
+        RA = SagittariusData.tomas(ra)
+        DEC = SagittariusData.tomas(dec)
+        return RA, DEC
     end
 end
 

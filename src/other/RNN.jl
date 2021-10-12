@@ -1,17 +1,20 @@
 using DifferentialEquations, Flux, DiffEqFlux, Zygote
-using Plots, LinearAlgebra, Statistics, LaTeXStrings, ColorSchemes
+using Plots, LinearAlgebra, Statistics, LaTeXStrings, ColorSchemes,Measures
 include("../MechanicsDatasets.jl")
 using .MechanicsDatasets
 
+theme(:mute)
+Plots.resetfontsizes()
+Plots.scalefontsizes(2)
 
 ### Creation of synthethetic data---------------------- #
-tspan = (0.0, 7.5)
+tspan = (0.0, 8.5)
 t = Array(range(tspan[1], tspan[2], length=256))
 true_u0 = [3.0, 0.0] # contains x0 and dx0
-true_p = [1.0]
+true_p = [2.0]
 stderr = 0.1
 # Define potential and get dataset
-V0(x,p) = p[1]*x^2 
+V0(x,p) = 0.5*p[1]*x^2 
 data = MechanicsDatasets.potentialproblem1D(V0, true_u0, true_p, t, addnoise=true, σ=stderr)
 ### End ------------------------------------------------ #
 
@@ -24,14 +27,14 @@ function train(num_in::Int, num_hidden::Int, epochs::Int, batchsize::Int)
         Dense(num_in + num_hidden, 16, tanh),  # Flux.LSTMCell(num_in + num_hidden, 16), # 
         Dense(16, 16, tanh), 
         Dense(16, 16, tanh),
-        Dense(16, num_hidden + 1)
+        Dense(16, num_hidden + num_in)
     )
     ps = Flux.params(NN)
 
     function rnn(h, x)
         inputs = vcat(h, x)
         result = NN(inputs)
-        return result[1:num_hidden], result[end]
+        return result[1:num_hidden], result[num_hidden+1:end]
     end
 
     model = Flux.Recur(rnn, h)
@@ -49,14 +52,14 @@ function train(num_in::Int, num_hidden::Int, epochs::Int, batchsize::Int)
         for i ∈ 1:batchsize
             idx = rand(a:b-num_in)
             push!(timelist, data[1,idx:idx+num_in-1])
-            push!(datalist, data[2,idx+num_in])
+            push!(datalist, data[2,idx:idx+num_in-1])
         end
         return (timelist, datalist)
     end
 
     function loss(input, output)
-        # y = [m(x) for x ∈ input]
-        return mean(abs2, model.(input) .- output)
+        err = [sum(abs2, model(input[i]) - output[i]) for i ∈ 1:size(input,1)]
+        return mean(abs2, err)
     end
 
     opt = ADAM(1e-3)
@@ -69,28 +72,29 @@ function train(num_in::Int, num_hidden::Int, epochs::Int, batchsize::Int)
             # println("Loss at thread ", Threads.threadid(), " : ", l)
             return l
         end
-        if l < 0.01
+        if l < 0.001
             break
         end
         Flux.update!(opt, ps, gradient)
     end
 
     function test(model, data)
-        prediction = []
-        for i ∈ 1:size(data[1,:],1)-num_in
-            push!(prediction, model(data[1,i:i+num_in-1]))
+        prediction = [x for x ∈ model(data[1,1:num_in])]
+        for i ∈ 2:size(data[1,:],1) - num_in
+            push!(prediction, model(data[1,i:i+num_in-1])[end])
         end
         return prediction
     end
     return test(model, data)
 end
 
-repetitions = 32
+repetitions = 512
 predictions = []
 
 lk = ReentrantLock()
 @time Threads.@threads for rep in 1:repetitions
-    pred = train(5, 5, 3000, 8)
+    println("Starting repetition ", rep, " of ", repetitions, " @ thread ", Threads.threadid())
+    pred = train(5, 10, 10000, 8)
     lock(lk)
     push!(predictions, pred)
     unlock(lk)
@@ -115,13 +119,26 @@ lower_CI = qtls[1,:] - μ
 upper_CI = qtls[2,:] - μ
 CI = [lower_CI, upper_CI]
 
-scatter(data[1,:], data[2,:], 
-    legend=:bottomright, 
-    label="Harmonic oscillator data",
-    xlabel=L"\textrm{time } t",
-    ylabel=L"\textrm{position } t",
-    ylims=(-5.0, 5.0),
-    size=(1200, 800),
+plt = scatter(data[1,:], data[2,:], 
+            legend=:bottomright, 
+            label="Harmonic oscillator data",
+            xlabel=L"\textrm{Time } t",
+            ylabel=L"\textrm{Position } x",
+            ylims=(-5.0, 5.0),
+            size=(1200, 800),
+            margin=5mm,
+            markersize=6,
+            markerstyle=:cross,
+            markerstrokewidth=0,
+            foreground_color_minor_grid = "white",
+            framestyle=:box,
+            color=colorant"#328" # indigo
 )
-plot!(data[1,6:end], μ, ribbon=CI, label="RNN prediction", color="orange")
+plt = plot!(plt, data[1,1:end-1], μ, ribbon=CI, 
+        label="RNN prediction",
+        linewidth=3,
+        color=colorant"#c67" # rose
+)
+
+savefig(plt, "RNN.pdf")
 

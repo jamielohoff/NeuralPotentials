@@ -1,5 +1,6 @@
 module MechanicsDatasets
 using DifferentialEquations, Flux, DiffEqFlux, Distributions, Zygote
+using Statistics, DataFrames
     """
     Function that solves the 1-dimensional 2nd order ODE for a given potential V
     This function is also able to add gaussian noise to the data, 
@@ -68,8 +69,8 @@ using DifferentialEquations, Flux, DiffEqFlux, Distributions, Zygote
             t = u[3]
 
             du[1] = dU
-            du[2] = dV(U, p[2:end])[1] - U
-            du[3] = p[1]/U^2
+            du[2] = dV(U, p)[1] - U
+            du[3] = p[1]/(p[2]U^2)
         end
 
         ϕspan = (0.0, 10π) # (ϕ[1], ϕ[end])
@@ -80,23 +81,38 @@ using DifferentialEquations, Flux, DiffEqFlux, Distributions, Zygote
         if addnoise
             pdf = Normal(0.0, σ)
             noise = rand(pdf, size(solution[1,:]))
-            solution[1,:] = solution[1,:] .+ noise
+            x = cos.(ϕ)./solution[1,:] .+ noise
+            y = sin.(ϕ)./solution[2,:] .+ noise
+            r = sqrt.(x.^2 .+ y.^2)
+            ϕ = mod.(atan.(x, y), 2π)
+            t = solution[3,:]
+            x_err = σ .* ones(size(r))
+            y_err = σ .* ones(size(r))
+            return DataFrame(hcat(r,ϕ,t,x_err, y_err), [:r, :ϕ, :t, :x_err, :y_err])
+        else
+            r = 1.0./solution[1,:]
+            t = solution[3,:]
+            return DataFrame(hcat(r,ϕ,t), [:r, :ϕ, :t])
         end
-        return solution
     end
 
     """
-    Function designed to sample trajectories.
+    Function designed to sample trajectories from the same potential with 
+    different initial conditions and parameters.
+    
     """
-    function sampletrajectories(ODE::Function, params::AbstractArray, initialConditions::AbstractArray, t::AbstractArray)
-        tspan = (t[1], t[end])
+    function sampletrajectories(V::Function, 
+                                params::AbstractArray, 
+                                initialConditions::AbstractArray, 
+                                t::AbstractArray; 
+                                addnoise=true, 
+                                σ=0.01)
         trajectoryList = []
         for i in 1:size(initialConditions)[1]
             u0 = initialConditions[i,:]
-            ps = params[i,:]
-            problem = ODEProblem(ODE, u0, tspan, ps)
-            sol = solve(problem, Tsit5(), saveat=t)
-            push!(trajectoryList, (Array(sol),ps))
+            p = params[i,:]
+            sol = potentialproblem1D(V, u0, p, t, addnoise=addnoise, σ=σ)
+            push!(trajectoryList, Array(sol))
         end
         return trajectoryList
     end

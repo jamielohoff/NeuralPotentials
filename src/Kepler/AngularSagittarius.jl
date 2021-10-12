@@ -59,7 +59,7 @@ end
 
 ### End -------------------------------------------------- #
 
-ps = vcat(rand(Float64, 1), 0.5*rand(Float64, 1), 2.0*rand(Float64, 2), rand(Float64,1), 4.0 .+ rand(Float64,1), (0.0166*c * 5.946e-2))
+ps = vcat(rand(Float64, 1), 0.5*rand(Float64, 1), 2.0*rand(Float64, 2), 8.0 .+ rand(Float64,1), 4.0 .+ rand(Float64,1), (0.0166*c * 5.946e-2))
 println(180.0*ps[2:4])
 
 function neuralkepler!(du, u, p, ϕ)
@@ -74,9 +74,21 @@ u0 = ps[1:2]
 ϕspan = (0.0, 10π)
 problem = ODEProblem(neuralkepler!, u0, ϕspan, ps[6:end]) 
 
-function converttoposition(ra, dec, D)
+function converttoangles(r, ϕ, D)
+    # D in kpc
+    ra = atan.(r.*cos.(ϕ), D*1e5)
+    dec = atan.(r.*sin.(ϕ), D*1e5)
+    RA = SagittariusData.tomas(ra)
+    DEC = SagittariusData.tomas(dec)
+    return RA, DEC
+end
+
+function converttoposition(ra, dec, ra_err, dec_err, D)
     RA = SagittariusData.toradian(ra)
     DEC = SagittariusData.toradian(dec)
+    RA_err = SagittariusData.toradian(ra_err)
+    DEC_err = SagittariusData.toradian(dec_err)
+
     x = D*tan.(RA)*1e5
     y = D*tan.(DEC)*1e5
     r = sqrt.(x.^2 + y.^2)
@@ -89,7 +101,7 @@ function converttoposition(ra, dec, D)
     ϕ2 = ϕ2 .+ 2π
     ϕ = vcat(ϕ1, ϕ2)
 
-    arr = vcat(reshape(r,1,:), reshape(ϕ,1,:), reshape(RA,1,:), reshape(DEC,1,:))
+    arr = vcat(reshape(r,1,:), reshape(ϕ,1,:), reshape(ra,1,:), reshape(dec,1,:), reshape(ra_err,1,:), reshape(dec_err,1,:))
 
     buf = Zygote.Buffer(arr)
     sortedϕ = sort(ϕ)
@@ -97,32 +109,39 @@ function converttoposition(ra, dec, D)
         j = findall(x -> x==ϕ[i], sortedϕ)[1]
         buf[1,j] = r[i]
         buf[2,j] = ϕ[i]
-        buf[3,j] = RA[i]
-        buf[4,j] = DEC[i]
+        buf[3,j] = ra[i]
+        buf[4,j] = dec[i]
+        buf[5,j] = ra_err[i]
+        buf[6,j] = dec_err[i]
     end
     res = copy(buf)
-    println(res)
     return res
 end
 
 function predict(params)
-    s, θ = SagittariusData.inversetransform(params[2:4].*π, star.r, star.ϕ, prograde)
-    pred = Array(solve(problem, Tsit5(), u0=vcat(params[5], params[1]), p=params[6:end], saveat=θ)) # 1.0/s[1]
+    star = converttoposition(S2data.RA, S2data.DEC, S2data.RA_err, S2data.DEC_err, 8.33)
+    s, θ = SagittariusData.inversetransform(params[2:4].*π, star[1,:], star[2,:], prograde)
+    pred = Array(solve(problem, Tsit5(), u0=vcat(1.0/s[1], params[1]), p=params[6:end], saveat=θ))
     r, ϕ = SagittariusData.transform(params[2:4].*π, 1.0./pred[1,:], θ, prograde)
-    ra, dec = SagittariusData.converttoangles(r, ϕ, D_Astar)
-    return vcat(reshape(r,1,:), reshape(ϕ,1,:), reshape(s,1,:), reshape(θ,1,:), reshape(ra,1,:), reshape(dec,1,:))
+    ra, dec = converttoangles(r, ϕ, 8.33)
+    # return vcat(reshape(r,1,:), reshape(ϕ,1,:), reshape(s,1,:), reshape(θ,1,:))
+    return vcat(reshape(r,1,:), reshape(ϕ,1,:), reshape(s,1,:), reshape(θ,1,:), 
+            reshape(ra,1,:), reshape(dec,1,:), reshape(star[3,:],1,:), reshape(star[4,:],1,:), 
+            reshape(star[5,:],1,:), reshape(star[6,:],1,:))
 end
 
-function χ2loss(r, ϕ)
-    return sum(abs2, (r.*cos.(ϕ) .- star.r.*cos.(star.ϕ))./star.x_err) + sum(abs2, (r.*sin.(ϕ) .- star.r.*sin.(star.ϕ))/star.y_err)
+function angularχ2loss(ra, dec, RA, DEC, RA_err, DEC_err)
+    return sum(abs2, (ra .- RA)) + sum(abs2, (dec .- DEC))
 end
 
 function loss(params) 
-    pred = predict(vcat(params[1:3], Zygote.@showgrad(Zygote.hook(x -> 1e9*x, params[4])), params[5:end])) # Zygote.@showgrad(Zygote.hook(x -> x, params[4]))
-    return χ2loss(pred[1,:], pred[2,:]), pred
+    pred = predict(Zygote.@showgrad(params)) # Zygote.@showgrad(Zygote.hook(x -> x, params[4]))
+    # return χ2loss(pred[1,:], pred[2,:]), pred
+    return angularχ2loss(pred[5,:], pred[6,:], pred[7,:], pred[8,:], pred[9,:], pred[10,:]), pred
+    # return geometricloss(pred[1,:], pred[2,:]), pred
 end
 
-opt = NADAM(0.01)
+opt = NADAM(0.01) # Nesterov(1e-8) # 
 epoch = 0
 
 cb = function(p,l,pred)
@@ -134,7 +153,7 @@ cb = function(p,l,pred)
     println("Parameters of the potential: ", p[5:end])
 
     if epoch % 20 == 0
-        orbit_plot = plot(cos.(pred[2,:]) .* pred[1,:], sin.(pred[2,:]) .* pred[1,:],
+        orbit_plot = plot(cos.(pred[2,:]) .* pred[1,:], sin.(pred[2,:]) .* pred[1,:], # xlims=(-0.5, 0.5), ylims=(-0.5, 0.5),
                             label="Prediction using neural potential",
                             xlabel=L"x\textrm{ coordinate in }10^{-2}\textrm{pc}",
                             ylabel=L"y\textrm{ coordinate in }10^{-2}\textrm{pc}",
@@ -147,10 +166,11 @@ cb = function(p,l,pred)
         angular_plot = scatter!(angular_plot, S2data.RA, S2data.DEC, xerror=S2data.RA_err, yerror=S2data.DEC_err)
 
         result_plot = plot(orbit_plot, angular_plot, layout=(2,1), size=(1200, 1200), legend=:bottomright)
+        # result_plot = plot(orbit_plot, layout=(1,1), size=(1200, 1200), legend=:bottomright)
         display(plot(result_plot))
     end
     global epoch+=1
-    return l < 150.0
+    return l < 5e-3
     
 end
 
@@ -159,10 +179,7 @@ epochs = 300000
 for epoch in 1:epochs
     _loss, _pred = loss(_p)
     _g = Flux.gradient(p -> loss(p)[1], _p)[1]
-    if _loss < 300.0
-        global opt = NADAM(1e-3)
-    end
-    if _loss < 150.0
+    if _loss < 500.0
         global opt = NADAM(1e-4)
     end
     Flux.update!(opt, _p, _g)

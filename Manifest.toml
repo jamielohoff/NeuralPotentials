@@ -1108,9 +1108,9 @@ version = "2.0.1"
 
 [[PlotUtils]]
 deps = ["ColorSchemes", "Colors", "Dates", "Printf", "Random", "Reexport", "Statistics"]
-git-tree-sha1 = "ae9a295ac761f64d8c2ec7f9f24d21eb4ffba34d"
+git-tree-sha1 = "2537ed3c0ed5e03896927187f5f2ee6a4ab342db"
 uuid = "995b91a9-d308-5afd-9ec6-746e21dbc043"
-version = "1.0.10"
+version = "1.0.14"
 
 [[Plotly]]
 deps = ["Base64", "DelimitedFiles", "HTTP", "JSON", "PlotlyJS", "Reexport"]
