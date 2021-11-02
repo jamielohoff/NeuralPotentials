@@ -1,7 +1,7 @@
 using DifferentialEquations, Flux, DiffEqFlux, Zygote
 using Plots, LinearAlgebra, Statistics, DataFrames, LaTeXStrings, Measures, CSV
-include("../Qtils.jl")
-include("../MechanicsDatasets.jl")
+include("../lib/Qtils.jl")
+include("../lib/MechanicsDatasets.jl")
 using .Qtils
 using .MechanicsDatasets
 
