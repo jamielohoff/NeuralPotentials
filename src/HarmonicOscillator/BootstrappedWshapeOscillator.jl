@@ -11,13 +11,13 @@ resetfontsizes()
 scalefontsizes(2)
 
 ### Creation of synthethetic data---------------------- #
-tspan = (0.0, 5.0)
+tspan = (0.0, 10.0)
 t0 = Array(range(tspan[1], tspan[2], length=128))
-true_u0 = [3.3, 0.0] # contains x0 and dx0
+true_u0 = [3.0, 0.0] # contains x0 and dx0
 true_p = [0.25, 2.0]
 stderr = 0.01
 
-V0(x,p) = 0.25*x^4 - 2.0*x^2 # 4.5*(1 - cos(x)) # p[1]*x^2 # 
+V0(x,p) = 4.5*(1 - cos(x)) # p[1]*x^2 # 0.25*x^4 - 2.0*x^2 # 
 dV0(x,p) = Flux.gradient(x -> V0(x,p), x)[1]
 @time data = MechanicsDatasets.potentialproblem1D(V0, true_u0, true_p, t0, addnoise=true, σ=stderr)
 
@@ -41,7 +41,9 @@ end
 prob = ODEProblem(neuraloscillator!, true_u0, tspan, true_p)
 
 itmlist = DataFrame(params = Array[], trajectory = Array[], potential = Array[])
-repetitions = 64
+repetitions = 8
+
+x0 = Array(range(-true_u0[1], true_u0[1], step=0.01))
 
 println("Beginning Bootstrap...")
 lk = ReentrantLock()
@@ -51,7 +53,7 @@ lk = ReentrantLock()
     ps = vcat(rand(Float64,2) .+ [3.0, 0.0], initial_params(dV))
 
     function predict(params)
-        return Array(solve(prob, Tsit5(), u0=true_u0, p=params[3:end], saveat=t0))
+        return Array(solve(prob, Tsit5(), u0=params[1:2], p=params[3:end], saveat=t0))
     end
 
     function loss(params)
@@ -67,7 +69,7 @@ lk = ReentrantLock()
 
     # Now we tell Flux how to train the neural network
     opt = NADAM(0.01)
-    epochs = 20000
+    epochs = 10000
     for epoch in 1:epochs
         _loss, _pred = loss(ps)
         gs = Flux.gradient(p -> loss(p)[1], ps)[1]
@@ -81,9 +83,8 @@ lk = ReentrantLock()
         end
     end
 
-    x0 = Array(range(-true_u0[1], true_u0[1], step=0.01))
     res = predict(ps)
-    predicted_potential = [Qtils.integrateNN(dV, p, 0.0, x) for x ∈ x0]
+    predicted_potential = [Qtils.integrateNN(dV, ps[3:end], 0.0, x) for x ∈ x0]
     # predicted_potential = [dV(x, ps[3:end])[1] for x ∈ x0]
 
     lock(lk)
@@ -115,7 +116,6 @@ traj_plot = plot!(traj_plot, t0, mean_traj, ribbon=CI_traj,
             legend=:bottomright,
 )
 
-x0 = Array(range(-true_u0[1], true_u0[1], step=0.01))
 true_potential = [V0(x, true_p) for x ∈ x0]
 
 pot_plot = plot(x0, true_potential, 
@@ -127,11 +127,11 @@ pot_plot = plot!(pot_plot, x0, mean_pot, ribbon=CI_pot,
             xlabel=L"\textrm{Displacement } x",
             ylabel=L"\textrm{Potential } V(x)",
             xlims=(-true_u0[1],true_u0[1]),
-            ylims=(-6.5, 8.5),
-            legend=:bottomright,
+            ylims=(-8.5, 8.5),
+            legend=:bottomright
 )
 result_plot = plot(traj_plot, pot_plot, layout=(2,1), size=(1200,1200))
-savefig(result_plot, "64_sampleNonLinearOscillator_fixedinititalconditions.pdf")
+savefig(result_plot, "8_sampleNonLinearOscillator_lownoise_cos.pdf")
 
 
 

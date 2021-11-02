@@ -45,7 +45,7 @@ using Statistics, DataFrames
 
     """
     Function that solves the kepler problem for a given potential.
-    This function is also able to add gaussian noise to the radial coordinate.
+    This function is also able to add gaussian noise to the coordinates.
 
     Arguments: 
     1. `dV`: Gradient of the potential.
@@ -82,8 +82,8 @@ using Statistics, DataFrames
             pdf = Normal(0.0, σ)
             noise = rand(pdf, size(solution[1,:]))
             x = cos.(ϕ)./solution[1,:] .+ noise
-            y = sin.(ϕ)./solution[2,:] .+ noise
-            r = sqrt.(x.^2 .+ y.^2)
+            y = sin.(ϕ)./solution[1,:] .+ noise
+            r =  sqrt.(x.^2 .+ y.^2)
             ϕ = mod.(atan.(x, y), 2π)
             t = solution[3,:]
             x_err = σ .* ones(size(r))
@@ -92,7 +92,9 @@ using Statistics, DataFrames
         else
             r = 1.0./solution[1,:]
             t = solution[3,:]
-            return DataFrame(hcat(r,ϕ,t), [:r, :ϕ, :t])
+            x_err = ones(size(r))
+            y_err = ones(size(r))
+            return DataFrame(hcat(r,ϕ,t, x_err, y_err), [:r, :ϕ, :t, :x_err, :y_err])
         end
     end
 
@@ -118,7 +120,7 @@ using Statistics, DataFrames
     end
 
     """
-    Function to calculate the reduced χ² statistical measure 
+    Function to calculate the χ²-statistical measure 
     for a given model prediction, groundtruth and a fixed standard error/deviation.
     The array which contains the experimental data can have multiple rows, 
     but of course the number of rows of the data should equal the number of 
@@ -131,8 +133,7 @@ using Statistics, DataFrames
     3. `nparams`: The number of parameters of the model.
     4. `σ`: Standard error/deviation of the datapoints.
     """
-    function reducedχ2(model::AbstractArray, data::AbstractArray, nparams::Number, σ::Number)
-        n = size(data,2)
-        return sum(abs2, (model .- data) ./ σ) ./ (n - nparams)
+    function χ2(model::AbstractArray, data::AbstractArray, σ::Number)
+        return sum(abs2, (model .- data) ./ σ)
     end
 end

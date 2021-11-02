@@ -1,5 +1,5 @@
 module Masterthesis
 
-greet() = print("Hello World!")
+greet() = print("Neural potentials")
 
 end # module

@@ -10,17 +10,16 @@ const c = 306.4 # in Mpc / Gyr
 const G = 4.475e-53 # in Mpc^3 / (Gyr^2 * planck mass)
 
 u0 = [1.0, 0.0]
-p = vcat([3.0, 0.0, 0.0])
+p = [3.0, 0.0, 0.0]
 tspan = (0.0, 7.0)
 
 mu(z, χ) = 5.0 .* log10.((c/H0)*abs.((1.0 .+ z) .* χ)) .+ 25.0 # we have a +25 instead of -5 because we measure distances in Mpc
 Ω_ϕ(dQ, E, V, z) = 8π/3 .* (0.5 .* ((1 .+ z).*E.*dQ).^2 .+ V)./ E.^2
 
 dV = FastChain(
-    FastDense(1, 4, relu),
-    FastDense(4, 4, relu),
-    FastDense(4, 4, relu),
-    FastDense(4, 1) 
+    FastDense(1, 8, relu),
+    FastDense(8, 8, relu),
+    FastDense(8, 1) 
 )
 
 ps = vcat(p, initial_params(dV))
@@ -37,7 +36,7 @@ function friedmann!(du,u,p,z)
     E = u[4]
     χ = u[5]
     
-    Ω_m = 0 # 1 - Ω_ϕ(dQ, E, V, z)
+    Ω_m = 1 - Ω_ϕ(dQ, E, V, z)
     dE = 1.5*(E/(1+z)) * (Ω_m + 8π/3 * ((1+z)*dQ)^2)
 
     du[1] = dQ
@@ -86,12 +85,12 @@ lk = ReentrantLock()
         # println("Loss: ", l)
         # println("Parameters: ", p[1:3])
         # println("Dark matter density parameter: ", 1 - Ω_ϕ(pred[2,:], pred[4,:], pred[3,:], sampledata.z)[1])
-        return l < 1.05
+        return false
     end
 
     p = [3.0, 0.0, 0.0]
     ps = vcat(p, initial_params(dV))
-    opt = ADAM(1e-2)
+    opt = NADAM(1e-2)
     @time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=500)
 
     u0 = vcat(result.minimizer[1:3], [1.0, 0.0])
@@ -107,7 +106,7 @@ lk = ReentrantLock()
 end
 println("Bootstrap complete!")
 
-CSV.write(joinpath(@__DIR__, "Bootstrap.CSV"), itmlist)
+# CSV.write(joinpath(@__DIR__, "Bootstrap.CSV"), itmlist)
 
 mean_params, std_params, CI_params = Qtils.calculatestatistics(itmlist.params)
 mean_μ, std_μ, CI_μ = Qtils.calculatestatistics(itmlist.μ)
@@ -131,7 +130,7 @@ EoS_plot = plot(uniquez, mean_EoS, ribbon=CI_EoS,
                 label="w",
                 legend=:topright
 )
-Ω_plot = plot(uniquez, zeros(541), ribbon=CI_Ω_ϕ, 
+Ω_plot = plot(uniquez, 1 .- mean_Ω_ϕ, ribbon=CI_Ω_ϕ, 
                 title="Density evolution", 
                 xlabel="redshift z", 
                 ylabel="density parameter Ω", 

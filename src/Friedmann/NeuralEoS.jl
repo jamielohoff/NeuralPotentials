@@ -1,28 +1,32 @@
-using DifferentialEquations: tanh
-using Flux, DiffEqFlux, DifferentialEquations
-using DataFrames, CSV, Plots, Statistics
+using Flux, DiffEqFlux, DifferentialEquations, Zygote
+using DataFrames, CSV, Plots, Statistics, Measures, LaTeXStrings
 include("../Qtils.jl")
+include("../AwesomeTheme.jl")
 using .Qtils
+
+theme(:awesome)
+resetfontsizes()
+scalefontsizes(2)
 
 data, uniquez = Qtils.loaddata(@__DIR__, "supernovae.csv", "grbs.csv")
 averagedata = Qtils.preparedata(data, uniquez)
 
-const H0 = 0.07 # 1 / Gyr
+const H0 = 0.06766 # 1 / Gyr
 const c = 306.4 # in Mpc / Gyr
-const G = 4.475e-53 # in Mpc^3 / (Gyr^2 * planck mass)
 
 Ω_m_0 = 0.25 .+  0.75 .* rand(Float32, 1)
 u0 = [Ω_m_0, 1.0, 0.0]
-zspan = (0.0, 7.0)
+zspan = (uniquez[1] - 0.01, uniquez[end] + 0.01)
 
 mu(z, χ) = 5.0 .* log10.((c/H0)*abs.((1.0 .+ z) .* χ)) .+ 25.0 # we have a +25 instead of -5 because we measure distances in Mpc
 
+boundrelu(x) = min.(max.(x, 0.0), 1.0)
+
 # Defining the time-dependent equation of state
 w_DE = FastChain(
-    FastDense(1, 4, relu),
-    FastDense(4, 4, relu),
-    FastDense(4, 4, relu),
-    FastDense(4, 1, tanh) # choose output function such that -1 < w < 1
+    FastDense(1, 8, boundrelu),
+    FastDense(8, 8, boundrelu),
+    FastDense(8, 1) # choose output function such that -1 < w < 1
 )
 
 ps = vcat(Ω_m_0, initial_params(w_DE))
@@ -33,35 +37,40 @@ function friedmann!(du,u,p,z)
     E = u[2]
     χ = u[3]
 
-    Ω_DE = 1 - Ω_m
-    dE = 1.5*E/(1+z) * (Ω_m + (1 + w_DE(z, p)[1])*Ω_DE)
+    Ω_DE = 1.0 - Ω_m
+    dE = 1.5*E/(1+z) * (Ω_m + (1.0 + w_DE(z, p)[1])*Ω_DE)
     
-    du[1] = (3/(1+z) - 2*dE/E) * Ω_m
+    du[1] = (3.0/(1+z) - 2.0*dE/E) * Ω_m
     du[2] = dE
-    du[3] = 1/E
+    du[3] = 1.0/E
 end
 
 problem = ODEProblem(friedmann!, u0, zspan, ps)
 
 function predict(params)
     u0 = [params[1], 1.0, 0.0]
-    return Array(solve(problem, Tsit5(), u0=u0, p=params[2:end], saveat=uniquez))
+    return Array(solve(problem, Tsit5(), u0=u0, p=Zygote.@showgrad(params[2:end]), saveat=uniquez))
 end
 
 function loss(params)
     pred = predict(params)
     µ = mu(uniquez, pred[end,:])
-    return Qtils.reducedχ2(μ, averagedata, size(params,1)), pred
+    return Qtils.χ2(μ, averagedata), pred
 end
 
+epoch = 0
 cb = function(p, l, pred)
+    println("Epoch: ", epoch)
     println("Loss: ", l)
     println("Parameters: ", p[1])
-    return l < 1.0
+    w = [ w_DE(z, p[2:end])[1] for z ∈ uniquez ]
+    display(plot(uniquez, w))
+    global epoch += 1
+    return false
 end
 
-opt = ADAM(1e-2)
-@time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=300)
+opt = NADAM(1e-2)
+@time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=5000)
 
 u0 = [result.minimizer[1], 1.0, 0.0]
 res = solve(problem, Tsit5(), u0=u0, p=result.minimizer[2:end], saveat=uniquez)
@@ -77,10 +86,10 @@ res = solve(problem, Tsit5(), u0=u0, p=result.minimizer[2:end], saveat=uniquez)
 )
 
 μ_plot = plot!(μ_plot, uniquez, mu(uniquez, res[end,:]), label="fit")
-EoS = map(z -> w_DE(z, result.minimizer[2:end])[1], uniquez)
+EoS = [w_DE(z, result.minimizer[2:end])[1] for z ∈ uniquez]
 EoS_plot = plot(uniquez, EoS, title="Equation of State w", xlabel="redshift z", ylabel="equation of state w")
 Ω_plot = plot(uniquez, res[1,:], title="Density evolution", xlabel="redshift z", ylabel="density parameter Ω", label="Ω_m")
-Ω_plot = plot!(Ω_plot, uniquez, 1 .- res[1,:], label="Ω_DE")
+Ω_plot = plot!(Ω_plot, uniquez, 1.0 .- res[1,:], label="Ω_DE")
 
 println("Cosmological parameters: ")
 println("Mass parameter Ω_m = ", result.minimizer[1])

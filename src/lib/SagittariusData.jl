@@ -1,8 +1,6 @@
 module SagittariusData
     using DataFrames, CSV, Plots, Zygote
 
-    # conversion factor from km/s to pc/yr
-    const kmstopcyr = 1.022e-6
     # conversion factor from microarcseconds to radians
     const mastorad = 4.8481368e-9 
     const starlist = ["S1", "S2", "S4", "S8", "S9", "S12", "S13", "S14", "S17", "S18", "S19", "S21", 
@@ -116,7 +114,6 @@ module SagittariusData
     2. `D`: Distance of Sagittarius A* in kpc
     """
     function orbit(star::DataFrame, D::Real)
-        D = D*1e5
         RA = SagittariusData.toradian(star.RA)
         DEC = SagittariusData.toradian(star.DEC)
         RA_err = SagittariusData.toradian(star.RA_err)
@@ -212,8 +209,11 @@ module SagittariusData
     end
 
     """
-    Function that...
-
+    Function that checks if the orbit is prograde or retrograde.
+    If ϕ increases, we have a retrograde orbit, but if it decreases it has a prograde orbit.
+    
+    Arguments:
+    1. `ϕ`: Array that contains the polar angle of the trajectory/orbit. 
     """
     function isprograde(ϕ::AbstractArray)
         Δϕ = ϕ[2:end] .- ϕ[1:end-1]
@@ -228,7 +228,6 @@ module SagittariusData
 
     Arguments:
     1. `ϕ`: Array that contains the polar angle of the trajectory/orbit. 
-    1. `ι`: Inclination angle... 
     """
     function correctphase(ϕ::AbstractArray)
         buf = Zygote.Buffer(zeros((size(ϕ,1),1)))
@@ -257,7 +256,8 @@ module SagittariusData
     end
     
     """
-    Function that rotates a trajectory in the x-y-plane around an axis in the x-y-plane...
+    Function that rotates a trajectory against the observational plane  by using the three angles inclination ι, 
+    longitude of ascension Ω and argument of periapsis ω.
 
     Source and explanation of the angles: 
     https://www.narom.no/undervisningsressurser/sarepta/rocket-theory/satellite-orbits/introduction-of-the-six-basic-parameters-describing-satellite-orbits/
@@ -266,16 +266,16 @@ module SagittariusData
     Arguments:
     1. `angles`: Array that contains the Keplerian orbital elements, i.e. the three angles inclination ι, 
                  longitude of the ascending node Ω and argument of periapsis ω.
-    2. `r`: Radial coordinate of the trajectory in the x-y-plane.
-    3. `ϕ`: Polar angle of the original trajectory in the x-y-plane.
+    2. `r`: Radial coordinate of the trajectory in the observational plane.
+    3. `ϕ`: Polar angle of the original trajectory in the observational plane.
     """
     function transform(angles::AbstractArray, r::AbstractArray, ϕ::AbstractArray, prograde::Bool)
         if prograde
-            ι = mod(angles[1],π/2)
+            ι = mod(angles[1],π/2) + 0.001
         else
-            ι = mod(angles[1],π/2) + π/2
+            ι = mod(angles[1],π/2) + π/2 + 0.001
         end
-        Ω = mod(angles[2],2π)
+        Ω = mod(angles[2],π)
         ω = mod(angles[3],2π)
     
         x = r.*cos.(ϕ)
@@ -296,7 +296,8 @@ module SagittariusData
     
     
     """
-    Function that...
+    Function that rotates a trajectory back from the plane of motion into the observational plane by using the three angles inclination ι, 
+    longitude of ascension Ω and argument of periapsis ω.
 
     Source and explanation of the angles: 
     https://www.narom.no/undervisningsressurser/sarepta/rocket-theory/satellite-orbits/introduction-of-the-six-basic-parameters-describing-satellite-orbits/
@@ -304,16 +305,16 @@ module SagittariusData
     Arguments:
     1. `angles`: Array that contains the Keplerian orbital elements, i.e. the three angles inclination ι, 
                  longitude of the ascending node Ω and argument of periapsis ω.
-    2. `r`: Radial coordinate of the trajectory in the x-y-plane.
+    2. `r`: Radial coordinate of the trajectory in the observation.
     3. `ϕ`: Polar angle of the original trajectory in the x-y-plane.
     """
     function inversetransform(angles::AbstractArray, r::AbstractArray, ϕ::AbstractArray, prograde::Bool)
         if prograde
-            ι = mod(angles[1],π/2)
+            ι = mod(angles[1],π/2) + 0.001
         else
-            ι = mod(angles[1],π/2) + π/2
+            ι = mod(angles[1],π/2) + π/2 + 0.001
         end
-        Ω = mod(angles[2],2π)
+        Ω = mod(angles[2],π)
         ω = mod(angles[3],2π)
         
         x = r.*cos.(ϕ)
@@ -333,12 +334,18 @@ module SagittariusData
     end
 
     """
-    Function that 
+    Function that converts physical distances and trajectories of a star around a central body
+    back into angular coordinates in microarcseconds.
+
+    Arguments:
+    1. `r`: Radial coordinate of the trajectory in the observational plane.
+    2. `ϕ`: Polar angle of the original trajectory in the observational plane.
+    1. `D`: Distance of the central body, i.e. distance to Sagittarius A*
     """
     function converttoangles(r, ϕ, D)
         # D in kpc
-        ra = atan.(r.*cos.(ϕ), D*1e5)
-        dec = atan.(r.*sin.(ϕ), D*1e5)
+        ra = atan.(r.*cos.(ϕ), D)
+        dec = atan.(r.*sin.(ϕ), D)
         RA = SagittariusData.tomas(ra)
         DEC = SagittariusData.tomas(dec)
         return RA, DEC

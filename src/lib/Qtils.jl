@@ -9,30 +9,7 @@ Also contains other helper functions for the Master thesis project.
 using Flux, DiffEqFlux, QuadGK, DifferentialEquations, Zygote
 using DataFrames, CSV, Statistics, LinearAlgebra, Random, Distributions
 
-    """
-    Function that allows to perfom predictions using a neural network for an array of inputs.
-
-    Arguments:
-    1. `input`: The input array for which we want to perform the predictions
-    2. `neuralnetwork`: The neural network as a FastChain object.
-    3. `params`: Parameters, i.e. weights and biases of the neural network.
-    """
-    function predictarray(input::AbstractArray, NN::FastChain, params::Array)
-        return map(x -> NN([x], params)[1], input)
-    end
-
-    """
-    Function that allows to perfom predictions using a neural network for an array of inputs.
-
-    Arguments:
-    1. `input`: The input array for which we want to perform the predictions
-    2. `NN`: The neural network as a Chain object.
-    """
-    function predictarray(input::AbstractArray, NN::Chain)
-        return map(x -> NN([x])[1], input)
-    end
-
-    """
+"""
     Function that can be used to integrate a neural network with one input and output node.
     A neural network like this is effectively a one-dimensional function and thus can be integrated.
     The lower bound is 0 while the upper bounds can be specified,
@@ -54,20 +31,6 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random, Distributions
         0.0, 
         0.0
     )
-
-    """
-    Function that can be used to integrate a neural network with one input and output node.
-    A neural network like this is effectively a one-dimensional function and thus can be integrated.
-    The lower bound is 0 while the upper bounds can be specified.
-
-    Arguments:
-    1. `upperbound`: Array of upper bounds for the integrations.
-    2. `NN`: The neural network as a Chain object.
-    """
-    function integrateNN(upperbound::Real, NN::Chain)
-        integral, err = quadgk(x -> NN([x]), 0.0, upperbound, rtol=1e-8)
-        return integral[1]
-    end
     
     """
     Function to load the supernova data from a given directory.
@@ -95,7 +58,7 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random, Distributions
     end
 
     """
-    Function to prepare the supernova and gamma ray burst data for further processing.
+    Function to prepare the supernova and Gamma-ray burst data for further processing.
     Next to other things, it also averages over the different distance moduli that sometimes occur
     for the same redshift.
 
@@ -115,7 +78,7 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random, Distributions
     end
 
     """
-    Function to calculate the reduced χ² statistical measure 
+    Function to calculate the reduced χ²-statistical measure 
     for a given model prediction, groundtruth and variance/error.
     The dataframe which contains the experimental data has to have two keys, :mu and :me,
     which contain the measurements and their respective standard errors.
@@ -125,9 +88,25 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random, Distributions
     2. `data`: Dataframe which contains the exprimental data.
     3. `nparams`: The number of parameters of the model.
     """
-    function reducedχ2(model::AbstractArray, data::DataFrame, nparams::Number)
+    function reducedχ2(model::AbstractArray, data::DataFrame, nparams::Int)
         n = nrow(data)
         return sum(abs2, (model .- data.mu) ./ (data.me)) ./ (n - nparams)
+    end
+
+    """
+    Function to calculate the χ²-statistical measure 
+    for a given model prediction, groundtruth and variance/error.
+    The dataframe which contains the experimental data has to have two keys, :mu and :me,
+    which contain the measurements and their respective standard errors.
+    
+    Arguments:
+    1. `model`: Array that contains the model predictions.
+    2. `data`: Dataframe which contains the exprimental data.
+    3. `nparams`: The number of parameters of the model.
+    """
+    function χ2(model::AbstractArray, data::DataFrame)
+        n = nrow(data)
+        return sum(abs2, (model .- data.mu) ./ (data.me))
     end
 
     """
@@ -164,14 +143,14 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random, Distributions
         ddV = map(q -> ddNN(q, params)[1], range)
 
         # Calculation of the slow roll parameters
-        ϵ = 1/(16pi) .* (dV./V).^2
-        η = 1/(8pi) .* (ddV ./ V)
+        ϵ = 1/(16π) .* (dV./V).^2
+        η = 1/(8π) .* (ddV ./ V)
 
         if verbose
-            println(ϵ, η)
+            println(all(x -> x < threshold, ϵ), all(x -> x < threshold, η))
         end
 
-        return all(x -> x < threshold, ϵ), all(x -> x < threshold, η) # Check if there are any values above the threshold
+        return ϵ, η # Check if there are any values above the threshold
     end
 
     """
@@ -193,14 +172,14 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random, Distributions
         ddV = map(x -> ddF(x, params), range)
 
         # Calculation of the slow roll parameters
-        ϵ = 1/(16pi) .* (dV./V).^2
-        η = 1/(8pi) .* (ddV./V)
+        ϵ = 1/(16π) .* (dV./V).^2
+        η = 1/(8π) .* (ddV./V)
 
         if verbose
-            println(ϵ, η)
+            println(all(x -> x < threshold, ϵ), all(x -> x < threshold, abs.(η)))
         end
 
-        return all(x -> x < threshold, ϵ), all(x -> x < threshold, abs.(η)) # Check if there are any values above the threshold
+        return ϵ, η # Check if there are any values above the threshold
     end
 
     """
@@ -338,39 +317,25 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random, Distributions
     end
 
     """
-    Inplace function to train NeuralODE systems. The internal workings are more or less derived from
-    the train!-function in the Flux package of Julia's SciML ecosystem.
-    However it is modified such that it allows to define the dataset we want to train on explicitly
-    via the functions parameters. This is particularly useful when we deal with bootstrapping techniques.
+    Function to calculate the distance modulus.
+    We have a +25 instead of -5 because we measure distances in Mpc!
 
     Arguments:
-    1. `sampledata`: Sampledata we want to train on. The first row has to contain the point where we want to save.
-    2. `loss`: Function that calculates the difference between the model and the data. Has to look like:
-    function loss(params, sampledata)
-        ...
-        return loss, prediction
-    end
-    3. `params`: Parameters of the model/neural network.
-    4. `opt`: Optimizer for the given problem. Usually, it is advised to use either RMSprop or ADAM.
-    5. `cb`: Specify the callback function here. It has to contain a rule for early stopping, and thus has to look like:
-    cb = function(params, loss, prediction)
-        ...
-        return loss < 1.05
-    end
-    6. `epochs`: Number of epochs we want the training to last. Default value is 1000.
+    1. `z`: Array that contains the redshifts.
+    2. `χ`: Array that contains the unitless comoving distance.
     """
-    function bootstraptrain!(sampledata, loss, params, opt, cb; maxiters=1000)
-        for iter in 1:maxiters
-            l, pred = loss(params, sampledata)
-            grads = Flux.gradient(p -> loss(p, sampledata)[1], params)[1]
-            Flux.update!(opt, params, grads)
-    
-            if cb(params, l, pred)
-                break # stop training, if the early-stopping rule is satisfied.
-            end
-        end
-    end
+    mu(z, χ) = 5.0 .* log10.((c/H0) * abs.((1.0 .+ z) .* χ)) .+ 25.0 
 
+    """
+    Function to calculate the density paramter of the quintessence field.
+
+    Arguments:
+    1. `dQ`: Array that contains the time-derivative of the quintessence field Q. 
+    2. `E`: Array that contains the time-derivative of the quintessence field Q. 
+    3. `V`: Array that contains the time-derivative of the quintessence field Q. 
+    4. `z`: Array that contains the redshifts.
+    """
+    Ω_ϕ(dQ, E, V, z) = 8π/3 .* (0.5 .* ((1.0 .+ z).*dQ).^2 .+ V./ E.^2)
 
 end
 

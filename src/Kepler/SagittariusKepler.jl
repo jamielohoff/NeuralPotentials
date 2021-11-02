@@ -11,9 +11,9 @@ resetfontsizes()
 scalefontsizes(2)
 
 ### Sagittarius A* System ###
-const c = 30.64 # centiparsec per year
-const G = 4.49e-3 # gravitational constant in new units: (10^-2 parsec)^3 * yr^-2 * (10^6*M_solar)^-1
-D_Astar = 8.178 # distance of Sagittarius A* in kpc
+const c = 306.4 # mpc per yr
+const G = 4.49 # gravitational constant in new units: (mpc)^3 * yr^-2 * (10^6*M_solar)^-1
+const D_Astar = 8.178 * 1e6 # distance of Sagittarius A* in mpc
 # const hunderedkmstocpcyear = 10.0*3.154e7/3.09e11
 
 ### Initialisation of the Sagittarius data ------------------------ #
@@ -24,7 +24,7 @@ S2 = SagittariusData.orbit(S2data, D_Astar)
 path = joinpath(@__DIR__, "SagittariusOrbitalElements.csv")
 S2_orbitalelements = SagittariusData.loadorbitalelements(path, "S2")
 
-dV(U,p) = G*p[1]*[1/p[2]^2 + 3*U^2/c^2] # [p[1]] # 
+dV(U,p) = G*p[1]*[p[2]^2 - 3.0*U^2/c^2]
 
 star = sort(S2, [:t])
 
@@ -59,8 +59,7 @@ end
 
 ### End -------------------------------------------------- #
 
-ps = vcat(rand(Float64, 1), 0.5*rand(Float64, 1), 2.0*rand(Float64, 2), rand(Float64,1), 4.0 .+ rand(Float64,1), (0.0166*c * 5.946e-2))
-println(180.0*ps[2:4])
+ps = vcat(rand(Float64, 2), 0.5*rand(Float64, 1), 2.0*rand(Float64, 2), 4.0 .+ rand(Float64,1), rand(Float64,1))
 
 function neuralkepler!(du, u, p, ϕ)
     U = u[1]
@@ -77,8 +76,8 @@ problem = ODEProblem(neuralkepler!, u0, ϕspan, ps[6:end])
 function converttoposition(ra, dec, D)
     RA = SagittariusData.toradian(ra)
     DEC = SagittariusData.toradian(dec)
-    x = D*tan.(RA)*1e5
-    y = D*tan.(DEC)*1e5
+    x = D*tan.(RA)
+    y = D*tan.(DEC)
     r = sqrt.(x.^2 + y.^2)
     ϕ = mod.(atan.(y,x), 2π)
 
@@ -106,69 +105,97 @@ function converttoposition(ra, dec, D)
 end
 
 function predict(params)
-    s, θ = SagittariusData.inversetransform(params[2:4].*π, star.r, star.ϕ, prograde)
-    pred = Array(solve(problem, Tsit5(), u0=vcat(params[5], params[1]), p=params[6:end], saveat=θ)) # 1.0/s[1]
-    r, ϕ = SagittariusData.transform(params[2:4].*π, 1.0./pred[1,:], θ, prograde)
+    s, θ = SagittariusData.inversetransform(params[3:5].*π, star.r, star.ϕ, prograde)
+    pred = Array(solve(problem, Tsit5(), u0=params[1:2], p=params[6:end], saveat=θ)) # 1.0/s[1]
+    r, ϕ = SagittariusData.transform(params[3:5].*π, 1.0./pred[1,:], θ, prograde)
     ra, dec = SagittariusData.converttoangles(r, ϕ, D_Astar)
     return vcat(reshape(r,1,:), reshape(ϕ,1,:), reshape(s,1,:), reshape(θ,1,:), reshape(ra,1,:), reshape(dec,1,:))
 end
 
-function χ2loss(r, ϕ)
-    return sum(abs2, (r.*cos.(ϕ) .- star.r.*cos.(star.ϕ))./star.x_err) + sum(abs2, (r.*sin.(ϕ) .- star.r.*sin.(star.ϕ))/star.y_err)
+function χ2(r, ϕ)
+    return sum(abs2, (r.*cos.(ϕ) .- star.r.*cos.(star.ϕ))./star.x_err) + sum(abs2, (r.*sin.(ϕ) .- star.r.*sin.(star.ϕ))./star.y_err)
 end
 
-function loss(params) 
-    pred = predict(vcat(params[1:3], Zygote.@showgrad(Zygote.hook(x -> 1e9*x, params[4])), params[5:end])) # Zygote.@showgrad(Zygote.hook(x -> x, params[4]))
-    return χ2loss(pred[1,:], pred[2,:]), pred
+function geom(r, ϕ)
+    return sum(abs2, (r.*cos.(ϕ) .- star.r.*cos.(star.ϕ))) + sum(abs2, (r.*sin.(ϕ) .- star.r.*sin.(star.ϕ)))
 end
 
-opt = NADAM(0.01)
+
+function loss(params) # 1e9
+    pred = predict(vcat(params[1:4], Zygote.hook(x -> 1e12*x, params[5]), params[6:end]))
+    return sum(abs2, pred[1,:].-star.r), pred
+    # return χ2(pred[1,:], pred[2,:]), pred
+    # return geom(pred[1,:], pred[2,:]), pred
+end
+
+opt = NADAM(0.001) # 0.01
 epoch = 0
 
 cb = function(p,l,pred)
     println("Epoch: ", epoch)
     println("Loss: ", l)
-    println("Initial velocity: ", p[1])
-    println("Rotation angles: ", 180.0 * vcat(mod.(p[2], 0.5) + phase, mod.(p[3:4], 2)))
-    println("Initial values: ", 180.0*ps[2:4])
-    println("Parameters of the potential: ", p[5:end])
+    println("Initial conditions: ", p[1:2])
+    println("Rotation angles: ", 180.0 * vcat(mod.(p[3], 0.5) + phase, mod.(p[4], 1), mod.(p[5], 2)))
+    # println("Initial values: ", 180.0*ps[3:5])
+    println("Parameters of the potential: ", p[6:end])
 
-    if epoch % 20 == 0
-        orbit_plot = plot(cos.(pred[2,:]) .* pred[1,:], sin.(pred[2,:]) .* pred[1,:],
-                            label="Prediction using neural potential",
-                            xlabel=L"x\textrm{ coordinate in }10^{-2}\textrm{pc}",
-                            ylabel=L"y\textrm{ coordinate in }10^{-2}\textrm{pc}",
-                            title="Position of the Star S2 and Gravitational Potential"
-        )
-        orbit_plot = scatter!(orbit_plot, star.r .* cos.(star.ϕ), star.r .* sin.(star.ϕ), label="S2 data",  xerror = star.x_err, yerror=star.y_err)
-        orbit_plot = plot!(orbit_plot, pred[3,:] .* cos.(pred[4,:]), pred[3,:] .* sin.(pred[4,:]), label="Prediction of unrotated data")
+    if epoch % 10 == 0
+        # orbit_plot = scatter(star.r .* cos.(star.ϕ), star.r .* sin.(star.ϕ), label="S2 data",  xerror = star.x_err, yerror=star.y_err)
+        # orbit_plot = plot!(orbit_plot, cos.(pred[2,:]) .* pred[1,:], sin.(pred[2,:]) .* pred[1,:],
+        #                     label="Prediction using neural potential",
+        #                     xlabel="x coordinate [mpc]",
+        #                     ylabel="y coordinate [mpc]",
+        #                     title="Position of the Star S2"
+        # )
+        # orbit_plot = plot!(orbit_plot, pred[3,:] .* cos.(pred[4,:]), pred[3,:] .* sin.(pred[4,:]), label="Prediction of unrotated data")
 
-        angular_plot = scatter(pred[5,:], pred[6,:])
-        angular_plot = scatter!(angular_plot, S2data.RA, S2data.DEC, xerror=S2data.RA_err, yerror=S2data.DEC_err)
+        angular_plot = scatter(S2data.RA, S2data.DEC, xerror=S2data.RA_err, yerror=S2data.DEC_err)
+        angular_plot = plot!(angular_plot, pred[5,:], pred[6,:], 
+                            label="Prediction of the Trajectory",
+                            xlabel=L"\textrm{Right ascension } \alpha \textrm{ [mas]}",
+                            ylabel=L"\textrm{Declination } \delta \textrm{ [mas]}",
+                            title="Trajectory of the Star S2")
 
-        result_plot = plot(orbit_plot, angular_plot, layout=(2,1), size=(1200, 1200), legend=:bottomright)
+        result_plot = plot(angular_plot, size=(1200, 1200), legend=:bottomleft)
         display(plot(result_plot))
     end
     global epoch+=1
-    return l < 150.0
+    return l < 1.3
     
 end
 
-_p = copy(ps)
-epochs = 300000
-for epoch in 1:epochs
-    _loss, _pred = loss(_p)
-    _g = Flux.gradient(p -> loss(p)[1], _p)[1]
-    if _loss < 300.0
-        global opt = NADAM(1e-3)
-    end
-    if _loss < 150.0
-        global opt = NADAM(1e-4)
-    end
-    Flux.update!(opt, _p, _g)
-    breakCondition = cb(_p, _loss, _pred)
-    if breakCondition
-        break
-    end
-end
+@time result = DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=40000)
+
+s, θ = SagittariusData.inversetransform(result.minimizer[3:5].*π, star.r, star.ϕ, prograde)
+θrange = Array(range(minimum(θ), maximum(θ), length=300))
+res = solve(problem, Tsit5(), u0=result.minimizer[1:2], p=result.minimizer[6:end], saveat=θrange)
+r, ϕ = SagittariusData.transform(result.minimizer[3:5].*π, 1.0./res[1,:], θrange, prograde)
+ra, dec = SagittariusData.converttoangles(r, ϕ, D_Astar)
+
+angular_plot = scatter(S2data.RA, S2data.DEC, 
+                        xerror=S2data.RA_err, yerror=S2data.DEC_err,
+                        title="Angular Trajectory of the Star S2",
+                        xlabel=L"\textrm{Right ascension } \alpha \textrm{ [mas]}",
+                        ylabel=L"\textrm{Declination } \delta \textrm{ [mas]}",
+                        label="S2 data"
+)
+angular_plot = plot!(angular_plot, ra, dec,label="Prediction of the trajectory")
+
+result_plot = plot(angular_plot, size=(1200, 1200), legend=:bottomleft)
+savefig(result_plot, "SagittariusFit.pdf")
+# for epoch in 1:epochs
+#     _loss, _pred = loss(_p)
+#     _g = Flux.gradient(p -> loss(p)[1], _p)[1]
+#     # if _loss < 300.0
+#     #     global opt = NADAM(1e-3)
+#     # end
+#     # if _loss < 150.0
+#     #     global opt = NADAM(1e-4)
+#     # end
+#     Flux.update!(opt, _p, _g)
+#     breakCondition = cb(_p, _loss, _pred)
+#     if breakCondition
+#         break
+#     end
+# end
 
