@@ -1,38 +1,33 @@
 using Flux, DiffEqFlux, DifferentialEquations, Zygote
 using DataFrames, Plots, LinearAlgebra, Statistics, Measures, LaTeXStrings
-include("../Qtils.jl")
-include("../AwesomeTheme.jl")
+include("../lib/Qtils.jl")
+include("../lib/AwesomeTheme.jl")
 using .Qtils
 
+# Load predefined plot theme and adjust font sizes
 theme(:awesome)
 resetfontsizes()
 scalefontsizes(2)
 
+# Load supernova Ia
 data, uniquez = Qtils.loaddata(@__DIR__, "supernovae.csv", "grbs.csv")
-averagedata = Qtils.preparedata(data, uniquez)
 
+# Natural constants
 const H0 = 0.06766 # in 1 / Gyr
 const c = 306.4 # in Mpc / Gyr
 const G = 4.475e-53 # in Mpc^3 / (Gyr^2 * planck mass)
 
-eVMpc = 1.564e29
-eVmpl = 1.2209e28
-eVGyr = 4.791e31
+# Conversion factors to electron volts
+const eVMpc = 1.564e29
+const eVmpl = 1.2209e28
+const eVGyr = 4.791e31
 
-ϕfactor = c/sqrt(G) * sqrt(eVmpl*eVMpc)/eVGyr
-Vfactor = H0^2/G * eVmpl/(eVMpc*eVGyr^2)
+const ϕfactor = c/sqrt(G) * sqrt(eVmpl*eVMpc)/eVGyr
+const Vfactor = H0^2/G * eVmpl/(eVMpc*eVGyr^2)
 
 zspan = (0.0, 7.0)
-# Function to calculate the distance modulus
-# we have a +25 instead of -5 because we measure distances in Mpc
-mu(z, χ) = 5.0 .* log10.((c/H0) * abs.((1.0 .+ z) .* χ)) .+ 25.0 
-# Function to calculate the density paramter of quintessence
-Ω_ϕ(dQ, E, V, z) = 8π/3 .* (0.5 .* ((1.0 .+ z).*dQ).^2 .+ V./ E.^2)
 
-### Bootstrap Loop 
-itmlist = DataFrame(params = Array[], Ω_ϕ = Array[], μ = Array[], EoS = Array[], potential = Array[], Q = Array[], dQ = Array[], ϵ = Array[], η = Array[])
-repetitions = 64
-
+# Plot supvernova Ia data
 μ_plot = scatter(data.z, data.mu, 
             title="Redshift-Luminosity Data",
             xlabel=L"\textrm{Redshift } z",
@@ -42,12 +37,18 @@ repetitions = 64
             legend=false,
 )
 
+### Bootstrap Loop 
+repetitions = 1024
+itmlist = DataFrame(params = Array[], Ω_ϕ = Array[], μ = Array[], EoS = Array[], potential = Array[], Q = Array[], dQ = Array[], ϵ = Array[], η = Array[])
 println("Beginning Bootstrap...")
 lk = ReentrantLock()
 @time Threads.@threads for rep in 1:repetitions
     println("Starting repetition ", rep, " at thread ID ", Threads.threadid())
+
+    # Sample supernova Ia data from the dataset
     sampledata = Qtils.elaboratesample(data, uniquez, 1.0)
 
+    # Defining the potential and its gradient in the form of a neural network
     V = FastChain(
         FastDense(1, 8, tanh),
         FastDense(8, 8, tanh),
@@ -55,6 +56,7 @@ lk = ReentrantLock()
     )
     dV(x, p) = Zygote.gradient(x -> V(x, p)[1], x)[1]
 
+    # Initialize parameters of the model with uniform distributions
     p = vcat(2.0.*rand(Float64, 1) .- 1.0, rand(Float64,1) .- 0.5)
     u0 = vcat(p, [1.0, 0.0])
     ps = vcat(p, initial_params(V))
@@ -75,41 +77,49 @@ lk = ReentrantLock()
         du[4] = 1.0/E
     end
 
+    # Define ODE problem and Optimizer
     problem = ODEProblem(friedmann!, u0, zspan, ps)
     opt = ADAM(1e-2)
 
+    # Function that predicts the results for a given set of parameters by solving the ODE at the given redshifts
     function predict(params)
         return Array(solve(problem, Tsit5(), u0=vcat(params[1:2],[1.0, 0.0]), p=params[3:end], saveat=sampledata.z))
     end
 
+    # Function that calculates the loss with respect to the observed data
     function loss(params)
         pred = predict(params)
-        µ = mu(sampledata.z, pred[end,:])
-        return Qtils.χ2(μ, averagedata), pred
+        µ = Qtils.mu(sampledata.z, pred[end,:])
+        return Qtils.χ2(μ, sampledata.z), pred
     end
 
+    # Callback function
     cb = function(p, l, pred)
-        println("Loss: ", l)
         return false
     end
 
     try
+        # Start the training of the model
         @time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=500)
+
+        # Use the best result, i.e. the one with the lowest loss and compute the potential etc. for it
         u0 = vcat(result.minimizer[1:2], [1.0, 0.0])
         res = Array(solve(problem, Tsit5(), u0=u0, p=result.minimizer[3:end], saveat=uniquez))
 
         potential = [V(q,result.minimizer[3:end])[1] for q ∈ res[1,:]]
 
         EoS = Qtils.calculateEOS(potential, res[2,:], res[3,:], uniquez)
-        density_ϕ = Ω_ϕ(res[2,:], res[3,:], potential, uniquez)
+        density_ϕ = Qtils.Ω_ϕ(res[2,:], res[3,:], potential, uniquez)
 
+        # Calculte the slowroll conditions
         ϵ, η = Qtils.slowrollsatisfied(V, result.minimizer[3:end], res[1,:], verbose=false)
 
+        # Push the result into the array
         println("Writing results...")
         lock(lk)
         push!(itmlist, [ϕfactor.*result.minimizer[1:2]./eVmpl, 
                         density_ϕ, 
-                        mu(uniquez,res[end,:]), 
+                        Qtils.mu(uniquez,res[end,:]), 
                         EoS, 
                         Vfactor.*potential./1e-16, 
                         ϕfactor.*res[1,:]./(1e-3*eVmpl), 
@@ -125,6 +135,7 @@ lk = ReentrantLock()
 end
 println("Bootstrap complete!")
 
+# Calculate the mean, standard deviation and 95% confidence intervals for the quantities of interest
 mean_params, std_params, CI_params = Qtils.calculatestatistics(itmlist.params)
 mean_μ, std_μ, CI_μ = Qtils.calculatestatistics(itmlist.μ)
 mean_EoS, std_EoS, CI_EoS = Qtils.calculatestatistics(itmlist.EoS)
@@ -135,14 +146,13 @@ mean_dQ, std_dQ, CI_dQ = Qtils.calculatestatistics(itmlist.dQ)
 mean_ϵ, std_ϵ, CI_ϵ = Qtils.calculatestatistics(itmlist.ϵ)
 mean_η, std_η, CI_η = Qtils.calculatestatistics(itmlist.η)
 
-
 println("Cosmological parameters: ")
 println("Density parameter Ω_ϕ = ", mean_Ω_ϕ[1], "±", std_Ω_ϕ[1])
 println("Initial conditions of scalar field in 1e-3 Planck masses: ")
 println("Q_0 = ", mean_params[1], "±", std_params[1])
 println("dQ_0 = ", mean_params[2], "±", std_params[2])
 
-
+# Plot all the stuff into a 3x2 figure
 μ_plot = plot!(μ_plot, uniquez, mean_μ, ribbon=CI_μ, 
                 label="Prediction from the neural network"
 )
@@ -188,12 +198,14 @@ result_plot = plot(μ_plot, Ω_plot, V_plot, EoS_plot, Q_plot, dQ_plot,
                     size=(1600, 2100), 
                     margin=12mm
 )
-savefig(result_plot, "64_sample_NeuralQuintessence.pdf")
+# Save the figure
+savefig(result_plot, "1024_sample_NeuralQuintessence.pdf")
 
+# Creating a plot of the evolution of the slowroll parameters with redshift
 slowroll_plot = plot(uniquez, mean_ϵ, ribbon=[CI_ϵ[1], CI_ϵ[2]],
                     title="Slowroll Parameters for Neural Quintessence", 
                     size=(1600, 1200), label="Slowroll parameter ϵ")
 slowroll_plot = plot!(slowroll_plot, uniquez, mean_η, ribbon=[CI_η[1], CI_η[2]], label="Slowroll parameter η")
-
-savefig(slowroll_plot, "64_sample_QuintessenceSlowroll.pdf")
+# Save this plot as well
+savefig(slowroll_plot, "1024_sample_QuintessenceSlowroll.pdf")
 

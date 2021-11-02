@@ -22,17 +22,10 @@ const eVMpc = 1.564e29
 const eVmpl = 1.2209e28
 const eVGyr = 4.791e31
 
-ϕfactor = c/sqrt(G) * sqrt(eVmpl*eVMpc)/eVGyr
-Vfactor = H0^2/G * eVmpl/(eVMpc*eVGyr^2)
+const ϕfactor = c/sqrt(G) * sqrt(eVmpl*eVMpc)/eVGyr
+const Vfactor = H0^2/G * eVmpl/(eVMpc*eVGyr^2)
 
 zspan = (0.0, 7.0)
-
-# Function to calculate the distance modulus
-# we have a +25 instead of -5 because we measure distances in Mpc
-mu(z, χ) = 5.0 .* log10.((c/H0) * abs.((1.0 .+ z) .* χ)) .+ 25.0 
-
-# Function to calculate the density paramter of quintessence
-Ω_ϕ(dQ, E, V, z) = 8π/3 .* (0.5 .* ((1.0 .+ z).*dQ).^2 .+ V./ E.^2)
 
 # Plot supvernova Ia data
 μ_plot = scatter(data.z, data.mu, 
@@ -92,7 +85,7 @@ lk = ReentrantLock()
     # Function that calculates the loss with respect to the observed data
     function loss(params)
         pred = predict(params)
-        µ = mu(sampledata.z, pred[end,:])
+        µ = Qtils.mu(sampledata.z, pred[end,:])
         return Qtils.χ2(μ, sampledata.z), pred
     end
 
@@ -112,13 +105,14 @@ lk = ReentrantLock()
         potential = [V(q,result.minimizer[3:end])[1] for q ∈ res[1,:]]
 
         EoS = Qtils.calculateEOS(potential, res[2,:], res[3,:], uniquez)
-        density_ϕ = Ω_ϕ(res[2,:], res[3,:], potential, uniquez)
+        density_ϕ = Qtils.Ω_ϕ(res[2,:], res[3,:], potential, uniquez)
 
         # Push the result into the array
+        println("Writing results...")
         lock(lk)
         push!(itmlist, [result.minimizer, 
                         density_ϕ, 
-                        mu(uniquez,res[end,:]), 
+                        Qtils.mu(uniquez,res[end,:]), 
                         EoS, 
                         Vfactor.*potential./1e-16, 
                         ϕfactor.*res[1,:]./(1e-3*eVmpl), 
