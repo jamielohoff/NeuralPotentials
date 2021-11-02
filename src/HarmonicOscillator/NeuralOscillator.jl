@@ -1,11 +1,13 @@
 using DifferentialEquations, Flux, DiffEqFlux, Zygote
 using Plots, LinearAlgebra, Statistics, LaTeXStrings, Measures
-include("../Qtils.jl")
-include("../MechanicsDatasets.jl")
+include("../lib/Qtils.jl")
+include("../lib/MechanicsDatasets.jl")
+include("../lib/AwesomeTheme.jl")
 using .Qtils
 using .MechanicsDatasets
 
-theme(:mute)
+# Load predefined plot theme and adjust font sizes
+theme(:awesome)
 resetfontsizes()
 scalefontsizes(2)
 
@@ -28,9 +30,10 @@ dV = FastChain(
     FastDense(8, 1)
 )
 
-otherparams = rand(Float32, 2) .+ [2.5, 0.0]
-ps = vcat(otherparams, initial_params(dV))
+# Initialize the parameters as well as the weights and biases of the neural network
+ps = vcat(rand(Float32, 2) .+ [2.5, 0.0], initial_params(dV))
 
+# Define ODE problem for our system
 function neuraloscillator!(du, u, p, t)
     x = u[1]
     dx = u[2]
@@ -39,90 +42,39 @@ function neuraloscillator!(du, u, p, t)
     du[2] = -dV(x,p)[1] 
 end
 
+# Defining the problem and optimizer
 prob = ODEProblem(neuraloscillator!, ps[1:2], tspan, ps[3:end])
+opt = ADAM(0.2)
 
+# Function that predicts the results for a given set of parameters by solving the ODE at the timesteps
 function predict(params)
     return Array(solve(prob, Tsit5(), u0=params[1:2], p=params[3:end], saveat=t0))
 end
 
-function reducedχ2(pred, params)
-    return sum(abs2, (pred[1,:] .- data[2,:])./stderr) / (size(data, 2) - size(params, 1))
-end
-
+# Function that calculates the loss with respect to the synthetic data
 function loss(params)
     pred = predict(params)
-    return reducedχ2(pred, params), pred
+    return sum(abs2, pred[1,:] .- data[2,:]), pred
 end
 
-i = 0
+epoch = 0
+# Callback function that shows the loss for every iteration
 cb = function(p,l,pred)
-    println("Loss: ", l, " at epoch ", i)
+    println("Loss: ", l, " at epoch ", epoch)
     println("Parameters: ", p[1:2])
-
-    # # Plotting fitting result
-    # traj_plot = scatter(t0, data[2,:], 
-    #             label="Harmonic oscillator data",
-    #             markersize=6,
-    #             markerstrokewidth=0,
-    #             markershape=:cross,
-    #             color=colorant"#328" # indigo
-    # )
-    # traj_plot = plot!(traj_plot, t0, pred[1, :],
-    #             title="Trajectory",
-    #             label="Prediction using neural potential",
-    #             xlabel=L"\textrm{Time } t",
-    #             ylabel=L"\textrm{Displacement } x(t)",
-    #             ylim=(-7.5,5.0),
-    #             legend=:bottomright,
-    #             margin=8mm,
-    #             foreground_color_minor_grid = "white",
-    #             framestyle=:box,
-    #             linewidth=3,
-    #             color=colorant"#c67" # rose
-    # )
-
-    # # Plotting the potential
-    # x0 = Array(range(-true_u0[1], true_u0[1], step=0.01))
-    # predicted_potential = map(x -> Qtils.integrateNN(dV, p[3:end], 0.0, x), x0)
-    # true_potential = map(x -> V0(x, true_p), x0)
-
-    # pot_plot = plot(x0, true_potential, 
-    #             label="Potential used for data generation",
-    #             color=colorant"#328" # indigo
-    # )
-    # pot_plot = plot!(pot_plot, x0, predicted_potential,
-    #             title="Potential",
-    #             label="Prediction of the potential",
-    #             xlabel=L"\textrm{Displacement } x",
-    #             ylabel=L"\textrm{Potential } V(x)",
-    #             xlims=(-true_u0[1],true_u0[1]),
-    #             ylims=(-5.0, 10.0),
-    #             legend=:bottomright,
-    #             margin=8mm,
-    #             foreground_color_minor_grid = "white",
-    #             framestyle=:box,
-    #             color=colorant"#c67" # rose
-    # )
-    
-    # display(plot(traj_plot, pot_plot, layout=(2,1), size=(1200, 1200)))
-
-    global i += 1
-    return l < 1.05
+    global epoch += 1
+    return false
 end
 
-opt = ADAM(0.2)
-
-@time result = DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=1500)
+# Now we tell Flux how to train the neural network
+@time result = DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=15000)
 
 res = Array(solve(prob, Tsit5(), u0=result.minimizer[1:2], p=result.minimizer[3:end], saveat=t0))
 
 # Plotting fitting result
 traj_plot = scatter(t0, data[2,:], 
             label="Harmonic oscillator data",
-            markersize=6,
-            markerstrokewidth=0,
             markershape=:cross,
-            color=colorant"#328" # indigo
 )
 traj_plot = plot!(traj_plot, t0, res[1, :],
             title="Trajectory",
@@ -131,22 +83,17 @@ traj_plot = plot!(traj_plot, t0, res[1, :],
             ylabel=L"\textrm{Displacement } x(t)",
             ylim=(-7.5,5.0),
             legend=:bottomright,
-            margin=8mm,
-            foreground_color_minor_grid = "white",
-            framestyle=:box,
-            linewidth=3,
-            color=colorant"#c67" # rose
+            linewidth=3
 )
 
 
 # Plotting the potential
 x0 = Array(range(-true_u0[1], true_u0[1], step=0.01))
-predicted_potential = map(x -> Qtils.integrateNN(dV, result.minimizer[3:end], 0.0, x), x0)
-true_potential = map(x -> V0(x, true_p), x0)
+predicted_potential = [Qtils.integrateNN(dV, result.minimizer[3:end], 0.0, x) for x ∈ x0]
+true_potential = [V0(x, true_p) for x ∈ x0]
 
 pot_plot = plot(x0, true_potential, 
             label="Potential used for data generation",
-            color=colorant"#328" # indigo
 )
 pot_plot = plot!(pot_plot, x0, predicted_potential,
             title="Potential",
@@ -156,12 +103,10 @@ pot_plot = plot!(pot_plot, x0, predicted_potential,
             xlims=(-true_u0[1],true_u0[1]),
             ylims=(-5.0, 10.0),
             legend=:bottomright,
-            margin=8mm,
-            foreground_color_minor_grid = "white",
-            framestyle=:box,
-            color=colorant"#c67" # rose
 )
 
 resultplot = plot(traj_plot, pot_plot, layout=(2,1), size=(1200, 1200))
+
+# Save the figure
 savefig(resultplot, "harmonicoscillator_positiononly.pdf")
 
