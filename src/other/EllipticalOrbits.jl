@@ -1,24 +1,25 @@
 using DifferentialEquations, Flux, DiffEqFlux, Zygote
 using Plots, Statistics, LinearAlgebra, LaTeXStrings, DataFrames, Distributions, Measures
-include("../MechanicsDatasets.jl")
-include("../AwesomeTheme.jl")
+include("../lib/MechanicsDatasets.jl")
+include("../lib/AwesomeTheme.jl")
 using .MechanicsDatasets
 
+# Load predefined plot theme and adjust font sizes
 theme(:awesome)
 resetfontsizes()
 scalefontsizes(2)
 
-### Sagittarius A* System ###
-const c = 306.4 # milliparsec per year
+# Natural constants
+const c = 306.4 # mpc/yr
 const G = 4.49 # gravitational constant in new units : (milliparsec)^3 * yr^-2 * (10^6*M_solar)^-1
 
 ϕ0span = (0.0, 4π-0.01)
 ϕ0 = Array(range(ϕ0span[1], ϕ0span[2], length=1000))
 ϕ1span = (0.0, 3π/4)
 ϕ1 = Array(range(ϕ1span[1], ϕ1span[2], length=1000))
-r0 = 0.1
-M = 4.35
-true_v0 = sqrt(G*M/r0) # 
+r0 = 0.1 # length of the periapsis in mpc 
+M = 4.35 # mass of the central SMBH
+true_v0 = sqrt(G*M/r0) # velocity for circular orbit in mpc/yr
 
 dV(U,p) = G*p[1]*[p[2]^2 + 3.0*U^2/c^2]
 dV0(U, p) = [G*p[1]*p[2]^2]

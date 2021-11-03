@@ -21,7 +21,7 @@ const G = 4.49 # gravitational constant in new units : (mpc)^3 * yr^-2 * (10^6*M
 ### Initialisation of the Synthetic data ------------------------ #
 ϕ0span = (0.01, 2π-0.01)
 ϕ0 = Array(range(ϕ0span[1], ϕ0span[2], length=144))
-r0 = 0.5 # distance in mpc from the periapsis
+r0 = 0.5 # length of the periapsis in mpc 
 M = 4.35 # mass of the central SMBH
 true_v0 = 1.2*sqrt(G*M/r0) # velocity in mpc/yr at the periapsis
 println(true_v0)

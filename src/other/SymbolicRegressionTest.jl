@@ -1,6 +1,6 @@
 using DifferentialEquations, Flux, DiffEqFlux
 using Plots, ProgressBars, Printf
-include("../Qtils.jl")
+include("../lib/Qtils.jl")
 using .Qtils
 using SymbolicUtils
 using SymbolicRegression

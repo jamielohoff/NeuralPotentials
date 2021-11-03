@@ -1,11 +1,13 @@
 using DifferentialEquations, Flux, DiffEqFlux, Zygote
 using Plots, LinearAlgebra, Statistics, LaTeXStrings, ColorSchemes,Measures
-include("../MechanicsDatasets.jl")
+include("../lib/MechanicsDatasets.jl")
+include("../lib/AwesomeTheme.jl")
 using .MechanicsDatasets
 
-theme(:mute)
-Plots.resetfontsizes()
-Plots.scalefontsizes(2)
+# Load predefined plot theme and adjust font sizes
+theme(:awesome)
+resetfontsizes()
+scalefontsizes(2)
 
 ### Creation of synthethetic data---------------------- #
 tspan = (0.0, 8.5)
@@ -16,29 +18,32 @@ stderr = 0.1
 # Define potential and get dataset
 V0(x,p) = 0.5*p[1]*x^2 
 data = MechanicsDatasets.potentialproblem1D(V0, true_u0, true_p, t, addnoise=true, σ=stderr)
-### End ------------------------------------------------ #
 
+# Function to train the recurrent neural network
 function train(num_in::Int, num_hidden::Int, epochs::Int, batchsize::Int)
     x = rand(num_in)
     h = rand(num_hidden)
 
+    # Initializing the RNN with 4 layers and the parameters
     NN = Chain(
-        # Flux.RNNCell(num_hidden, num_in, tanh),
-        Dense(num_in + num_hidden, 16, tanh),  # Flux.LSTMCell(num_in + num_hidden, 16), # 
+        Dense(num_in + num_hidden, 16, tanh),
         Dense(16, 16, tanh), 
         Dense(16, 16, tanh),
         Dense(16, num_hidden + num_in)
     )
     ps = Flux.params(NN)
 
+    # Defining the RNN input and output shape
     function rnn(h, x)
         inputs = vcat(h, x)
         result = NN(inputs)
         return result[1:num_hidden], result[num_hidden+1:end]
     end
 
+    # Initializing RNN
     model = Flux.Recur(rnn, h)
 
+    # Function to implement sampling from the dataset such that the batches fit the input and output of the neural network
     function createbatch(data, interval, batchsize)
         @assert size(interval,1) == 2
         @assert interval[1] ≥ data[1,1]
@@ -57,13 +62,16 @@ function train(num_in::Int, num_hidden::Int, epochs::Int, batchsize::Int)
         return (timelist, datalist)
     end
 
+    # Function that calculates the loss with respect to the synthetic data
     function loss(input, output)
         err = [sum(abs2, model(input[i]) - output[i]) for i ∈ 1:size(input,1)]
         return mean(abs2, err)
     end
 
+    # Initialize optimizer
     opt = ADAM(1e-3)
 
+    # Training loop
     for epoch ∈ 1:epochs
         batch = createbatch(data,(0.0, 6.0),batchsize)
         l = 0.0
@@ -78,19 +86,21 @@ function train(num_in::Int, num_hidden::Int, epochs::Int, batchsize::Int)
         Flux.update!(opt, ps, gradient)
     end
 
-    function test(model, data)
+    # Testing the model on the entire dataset, i.e. predict the entire dataset
+    function predict(model, data)
         prediction = [x for x ∈ model(data[1,1:num_in])]
         for i ∈ 2:size(data[1,:],1) - num_in
             push!(prediction, model(data[1,i:i+num_in-1])[end])
         end
         return prediction
     end
-    return test(model, data)
+    return predict(model, data)
 end
 
 repetitions = 512
 predictions = []
 
+# Boostrap loop
 lk = ReentrantLock()
 @time Threads.@threads for rep in 1:repetitions
     println("Starting repetition ", rep, " of ", repetitions, " @ thread ", Threads.threadid())
@@ -100,6 +110,7 @@ lk = ReentrantLock()
     unlock(lk)
 end
 
+# Function to calculate the quantiles of the dataset to compute the confidence intervals
 function quantiles(data; bounds=[0.025, 0.975])
     itm = data[1]
     for i in 2:size(data,1)
@@ -115,10 +126,13 @@ end
 μ = mean(predictions)
 qtls = quantiles(predictions)
 
+# Calculating confidence intervals
 lower_CI = qtls[1,:] - μ
 upper_CI = qtls[2,:] - μ
 CI = [lower_CI, upper_CI]
 
+
+# Plotting the results
 plt = scatter(data[1,:], data[2,:], 
             legend=:bottomright, 
             label="Harmonic oscillator data",
@@ -126,19 +140,13 @@ plt = scatter(data[1,:], data[2,:],
             ylabel=L"\textrm{Position } x",
             ylims=(-5.0, 5.0),
             size=(1200, 800),
-            margin=5mm,
-            markersize=6,
             markerstyle=:cross,
-            markerstrokewidth=0,
-            foreground_color_minor_grid = "white",
-            framestyle=:box,
-            color=colorant"#328" # indigo
 )
 plt = plot!(plt, data[1,1:end-1], μ, ribbon=CI, 
         label="RNN prediction",
         linewidth=3,
-        color=colorant"#c67" # rose
 )
 
+# Saving the figure
 savefig(plt, "RNN.pdf")
 
