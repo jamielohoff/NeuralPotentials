@@ -1,2 +1,4 @@
 # NeuralPotentials
-Julia Code for my Masterthesis
+
+This repository contains the work that I did for my Master's thesis. It 
+
