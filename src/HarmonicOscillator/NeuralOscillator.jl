@@ -46,7 +46,7 @@ end
 prob = ODEProblem(neuraloscillator!, ps[1:2], tspan, ps[3:end])
 opt = ADAM(0.2)
 
-# Function that predicts the results for a given set of parameters by solving the ODE at the timesteps
+# Function that predicts the results for a given set of parameters by solving the ODE at the time-steps
 function predict(params)
     return Array(solve(prob, Tsit5(), u0=params[1:2], p=params[3:end], saveat=t0))
 end

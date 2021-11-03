@@ -343,12 +343,49 @@ module SagittariusData
     1. `D`: Distance of the central body, i.e. distance to Sagittarius A*
     """
     function converttoangles(r, ϕ, D)
-        # D in kpc
         ra = atan.(r.*cos.(ϕ), D)
         dec = atan.(r.*sin.(ϕ), D)
         RA = SagittariusData.tomas(ra)
         DEC = SagittariusData.tomas(dec)
         return RA, DEC
+    end
+
+    """
+    Function to calculate the χ²-statistical measure 
+    for a given model prediction, groundtruth and variance/error.
+    The dataframe which contains the experimental data has to have fourkeys, :r, :ϕ, :x_err and :y_err,
+    which contain the measurements and their respective standard errors.
+    
+    Arguments:
+    1. `r`: Model predictions of the radial coordinates of the trajectory.
+    2. `ϕ`: Model predictions of the angular coordinates of the trajectory.
+    3. `star`: Dataframe containing the data of a star including its trajectory in polar coordinates and x- and y-error.
+    """
+    function χ2(r, ϕ, star)
+        return sum(abs2, (r.*cos.(ϕ) .- star.r.*cos.(star.ϕ))./star.x_err) + sum(abs2, (r.*sin.(ϕ) .- star.r.*sin.(star.ϕ))./star.y_err)
+    end
+
+    """
+    Function that orders the observations by the time they were taken. 
+    After that, it orders the observations by increasing angle and takes in account the fact that 
+    the stars might perform multiple revelations (max. 2!) and adds 2π to the ϕ angle for every additional revelation.
+    
+    Arguments: 
+    1. `star`: Dataframe containing the data of a star including its trajectory in polar coordinates and x- and y-error.
+    """
+    function orderobservations(star)
+        star = sort(star, [:t])
+        Δϕ = star.ϕ[2:end] .- star.ϕ[1:end-1]
+        idx = findall(x -> abs(x) > 4.5, Δϕ)[1]
+        star1 = star[1:idx,:]
+        star2 = star[idx+1:end,:]
+        star2.ϕ = star2.ϕ .+ 2π
+
+        sort!(star1, :ϕ)
+        sort!(star2, :ϕ)
+        star = outerjoin(star1,star2,on=[:r,:ϕ,:t,:x_err,:y_err])
+        unique!(star, [:ϕ])
+        return star
     end
 end
 
