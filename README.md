@@ -4,16 +4,32 @@ This repository contains the work I did on the topic on neural potentials. It co
 
 ## Setup of the Project
 
-ALL the code is written in Julia, therefore it is imperative to install it on your machine. Follow the instructions under ... to install the latest version on Windows/Linux/Mac.
+ALL the code is written in Julia, therefore it is imperative to install it on your machine. Follow the instructions under https://julialang.org/downloads/platform/ to install the latest version on Windows/Linux/Mac. The package was tested with Julia version 1.6.1.
+The program requires several packages from the Julia package repository. To learn how to install packages, look at https://docs.julialang.org/en/v1/stdlib/Pkg/.
 The relevant Julia packages are:
 * DifferentialEquations
+* Flux
+* FluxDiffEq
+* Zygote
 * CSV
 * Plots
 * LateXStrings
+* Measures
+* DataFrames
+
+To use the Jupyter notebook, it is necessary to have a Julia version and packages listed above installed on your system. To understand how to deploy a Julia notebook on Jupyter, look at https://datatofish.com/add-julia-to-jupyter/. 
+
+## The Notebook
+
+Run the notebook by cloning the package and navigating to the root folder of the package. Then run the command `jupyter notebook` and a directory will open in your browser. Select the notebook and run it.
 
 ## Harmonic Oscillator
 
-## Sagittrius A*
+## Sagittrius A* - The Milkyway's Supermassive Black Hole
 
 ## Redshift-Luminosity Data of Supernovae Ia
+
+## Project Status
+
+When the introductory notebook is completed, the project will no longer be maintained.
 
