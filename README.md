@@ -25,7 +25,7 @@ Run the notebook by cloning the package and navigating to the root folder of the
 
 ## Harmonic Oscillator
 
-The notebook teaches your the basics about neural potentials using the example of a simple harmonic oscillator. The folder called ''' HarmonicOscillator ''' containes further exmpales where techniques like bootstrap-sampling are introduced and it also analyzed more elaborate systems like a double-well potential.
+The notebook teaches your the basics about neural potentials using the example of a simple harmonic oscillator. The folder called `HarmonicOscillator containes further exmpales where techniques like bootstrap-sampling are introduced and it also analyzed more elaborate systems like a double-well potential.
 
 ## Sagittarius A* - The Milkyway's Supermassive Black Hole
 
