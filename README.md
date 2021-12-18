@@ -29,7 +29,7 @@ The notebook teaches your the basics about neural potentials using the example o
 
 ## Sagittarius A* - The Milkyway's Supermassive Black Hole
 
-The folder named `KeplerianOrbits` contains the example usecase of analyzing the infrared data of the positions of S-stars around Sagittarius A* recorded by the GRAVITY collaboration. It is sligthly more elaborate than the harmonic oscillator but still pretty simple as we again work in the Newtonian framework where we try to learn Newton's gravitational law and its relativistic corrections from data. The data can be obtained from https://vizier.cds.unistra.fr/viz-bin/VizieR-3?-source=J/ApJ/837/30/table5
+The folder named `KeplerianOrbits` contains the example usecase of analyzing the infrared data of the positions of S-stars around Sagittarius A* recorded by the GRAVITY collaboration. It is sligthly more elaborate than the harmonic oscillator but still pretty simple as we again work in the Newtonian framework where we try to learn Newton's gravitational law and its relativistic corrections. The datasets can be obtained from https://vizier.cds.unistra.fr/viz-bin/VizieR-3?-source=J/ApJ/837/30/table5
 
 ## Redshift-Luminosity Data of Supernovae Ia
 
