@@ -33,6 +33,8 @@ The folder named `KeplerianOrbits` contains the example usecase of analyzing the
 
 ## Redshift-Luminosity Data of Supernovae Ia
 
+Within the folder named
+
 ## Project Status
 
 The project is no longer maintained.
