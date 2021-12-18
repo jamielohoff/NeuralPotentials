@@ -35,5 +35,5 @@ The folder named `KeplerianOrbits` contains the example usecase of analyzing the
 
 ## Project Status
 
-When the introductory notebook is completed, the project will no longer be maintained.
+The project is no longer maintained.
 
