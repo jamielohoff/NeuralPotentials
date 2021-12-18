@@ -21,11 +21,15 @@ To use the Jupyter notebook, it is necessary to have a Julia version and package
 
 ## The Notebook
 
-Run the notebook by cloning the package and navigating to the root folder of the package. Then run the command `jupyter notebook` and a directory will open in your browser. Select the notebook and run it.
+Run the notebook by cloning the package and navigating to the root folder of the package. Then run the command `jupyter notebook` and a directory will open in your browser. Select the notebook and run it. It gives an overview about the method of neural potentials, its advantages and disadvantages and how to implement it in Julia.
 
 ## Harmonic Oscillator
 
-## Sagittrius A* - The Milkyway's Supermassive Black Hole
+The notebook teaches your the basics about neural potentials using the example of a simple harmonic oscillator. The folder called ''' HarmonicOscillator ''' containes further exmpales where techniques like bootstrap-sampling are introduced and it also analyzed more elaborate systems like a double-well potential.
+
+## Sagittarius A* - The Milkyway's Supermassive Black Hole
+
+
 
 ## Redshift-Luminosity Data of Supernovae Ia
 
