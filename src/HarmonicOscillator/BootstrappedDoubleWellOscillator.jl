@@ -126,5 +126,5 @@ pot_plot = plot!(pot_plot, x0, mean_pot, ribbon=CI_pot,
 result_plot = plot(traj_plot, pot_plot, layout=(2,1), size=(1200,1200))
 
 # Save the figure
-savefig(result_plot, "256_sampleNonLinearOscillator_lownoise_wshape.pdf")
+savefig(result_plot, "256_sampleDoubleWellOscillator_lownoise.pdf")
 

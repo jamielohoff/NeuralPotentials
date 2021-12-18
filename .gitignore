@@ -9,4 +9,5 @@ brans-dicke.jl
 
 # ignore folders
 .vscode/
+.ipynb_checkpoints
 

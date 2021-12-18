@@ -1,5 +1,5 @@
 using DifferentialEquations, Flux, DiffEqFlux, Zygote
-using Plots, LinearAlgebra, Statistics, LaTeXStrings, ColorSchemes,Measures
+using Plots, LinearAlgebra, Statistics, LaTeXStrings, ColorSchemes, Measures
 include("../lib/MechanicsDatasets.jl")
 include("../lib/AwesomeTheme.jl")
 using .MechanicsDatasets

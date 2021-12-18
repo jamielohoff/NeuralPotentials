@@ -24,14 +24,16 @@ data = MechanicsDatasets.potentialproblem1D(V0, true_u0, true_p, t0, addnoise=tr
 ### End ------------------------------------------------ #
 
 # Defining the gradient of the potential
-dV = FastChain(
+V = FastChain(
     FastDense(1, 8, relu), 
     FastDense(8, 8, relu),
     FastDense(8, 1)
 )
 
 # Initialize the parameters as well as the weights and biases of the neural network
-ps = vcat(rand(Float32, 2) .+ [2.5, 0.0], initial_params(dV))
+ps = vcat(rand(Float32, 2) .+ [2.5, -0.5], initial_params(V))
+
+dV(x, p) = Zygote.gradient(x -> V(x, p)[1], x)[1]
 
 # Define ODE problem for our system
 function neuraloscillator!(du, u, p, t)
@@ -39,12 +41,12 @@ function neuraloscillator!(du, u, p, t)
     dx = u[2]
 
     du[1] = dx
-    du[2] = -dV(x,p)[1] 
+    du[2] = -dV([x],p)[1] 
 end
 
 # Defining the problem and optimizer
 prob = ODEProblem(neuraloscillator!, ps[1:2], tspan, ps[3:end])
-opt = ADAM(0.2)
+opt = ADAM(0.1)
 
 # Function that predicts the results for a given set of parameters by solving the ODE at the time-steps
 function predict(params)
@@ -67,7 +69,7 @@ cb = function(p,l,pred)
 end
 
 # Now we tell Flux how to train the neural network
-@time result = DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=15000)
+@time result = DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=1000)
 
 res = Array(solve(prob, Tsit5(), u0=result.minimizer[1:2], p=result.minimizer[3:end], saveat=t0))
 
@@ -89,7 +91,7 @@ traj_plot = plot!(traj_plot, t0, res[1, :],
 
 # Plotting the potential
 x0 = Array(range(-true_u0[1], true_u0[1], step=0.01))
-predicted_potential = [Qtils.integrateNN(dV, result.minimizer[3:end], 0.0, x) for x ∈ x0]
+predicted_potential = [V(x, result.minimizer[3:end])[1] for x ∈ x0] # [Qtils.integrateNN(dV, result.minimizer[3:end], 0.0, x) for x ∈ x0]
 true_potential = [V0(x, true_p) for x ∈ x0]
 
 pot_plot = plot(x0, true_potential, 
@@ -108,5 +110,5 @@ pot_plot = plot!(pot_plot, x0, predicted_potential,
 resultplot = plot(traj_plot, pot_plot, layout=(2,1), size=(1200, 1200))
 
 # Save the figure
-savefig(resultplot, "harmonicoscillator_positiononly.pdf")
+# savefig(resultplot, "harmonicoscillator_positiononly.pdf")
 

@@ -6,7 +6,7 @@ using SymbolicUtils
 using SymbolicRegression
 
 ### Creation of synthethetic data----------------------- #
-tspan = (-2pi, 2pi)
+tspan = (-2π, 2π)
 data_t = range(tspan[1], tspan[2], length=100)
 noise = 0.2 * (2 * rand(Float64, size(data_t)) .- 1)
 data_batch = cos.(2 .* data_t) .+ data_t + noise
@@ -14,8 +14,9 @@ data_batch = cos.(2 .* data_t) .+ data_t + noise
 
 # Defining the neural network model
 model = Chain(
-    Dense(1, 20, tanh), 
-    Dense(20, 1)
+    Dense(1, 8, tanh),
+    Dense(8, 8, tanh), 
+    Dense(8, 1)
 )
 
 # Defining the loss function

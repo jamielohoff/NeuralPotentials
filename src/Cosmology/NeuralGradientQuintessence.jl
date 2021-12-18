@@ -1,7 +1,7 @@
 using Flux, DiffEqFlux, DifferentialEquations, Zygote
 using DataFrames, Plots, LinearAlgebra, Statistics, Measures, LaTeXStrings, CSV
-include("../Qtils.jl")
-include("../AwesomeTheme.jl")
+include("../lib/Qtils.jl")
+include("../lib/AwesomeTheme.jl")
 using .Qtils
 
 theme(:awesome)
