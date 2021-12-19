@@ -1,6 +1,6 @@
 # NeuralPotentials
 
-This repository contains the work I did on the topic on neural potentials. It contains a Jupyter notebook with an introduction on neural potentials using harmonic oscillators as well as all the code that was used to analyze various astrophysical and cosmological problems. The repository also contains the Master's thesis on which the project is based. THe thesis serves as a reference and handbook for the project.
+This repository contains the work I did on the topic on neural potentials. It contains a Jupyter notebook with an introduction on neural potentials using harmonic oscillators as well as all the code that was used to analyze various astrophysical and cosmological problems. The repository also contains the Master's thesis on which the project is based. The thesis serves as a reference and handbook for the project.
 
 ## Setup of the Project
 
@@ -21,15 +21,25 @@ To use the Jupyter notebook, it is necessary to have a Julia version and package
 
 ## The Notebook
 
-Run the notebook by cloning the package and navigating to the root folder of the package. Then run the command `jupyter notebook` and a directory will open in your browser. Select the notebook and run it.
+Run the notebook by cloning the package and navigating to the root folder of the package. Then run the command `jupyter notebook` and a directory will open in your browser. Select the notebook and run it. It gives an overview about the method of neural potentials, its advantages and disadvantages and how to implement it in Julia.
 
 ## Harmonic Oscillator
 
-## Sagittrius A* - The Milkyway's Supermassive Black Hole
+The notebook teaches your the basics about neural potentials using the example of a simple harmonic oscillator. The folder called `HarmonicOscillator` containes further exmpales where techniques like bootstrap-sampling are introduced and more elaborate systems like a double-well potential are analyzed.
+
+## Sagittarius A* - The Milkyway's Supermassive Black Hole
+
+The folder named `KeplerianOrbits` contains the example usecase of analyzing the infrared data of the positions of S-stars around Sagittarius A* recorded by the GRAVITY collaboration. It is sligthly more elaborate than the harmonic oscillator but still pretty simple as we again work in the Newtonian framework where we try to learn Newton's gravitational law and its relativistic corrections. The datasets can be obtained from https://vizier.cds.unistra.fr/viz-bin/VizieR-3?-source=J/ApJ/837/30/table5
+
+[BootstrappedSagittariusKepler_edit.pdf](https://github.com/jamiegrieser/NeuralPotentials/files/7740709/BootstrappedSagittariusKepler_edit.pdf)
+
+[BootstrappedSagittariusNeuralKeplerPotential.pdf](https://github.com/jamiegrieser/NeuralPotentials/files/7740710/BootstrappedSagittariusNeuralKeplerPotential.pdf)
 
 ## Redshift-Luminosity Data of Supernovae Ia
 
+Within the folder named `Cosmology`, we find examples for the use of neural potentials to solve the dark energy problem. In particular, the idea is to learn the potential of a hypothetical quintessence field from supernove Ia data. Additionally, there are also examples of using a neural equation of state instead of a potential to model dark energy more generally as a fluid without an explanation from particle physics. This shows that the idea of neural potentials can be expanded to other quantities.
+
 ## Project Status
 
-When the introductory notebook is completed, the project will no longer be maintained.
+The project is no longer maintained.
 
