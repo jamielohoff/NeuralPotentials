@@ -1,6 +1,5 @@
 # ignore file types
 *.png
-*.jpg
 
 # ignore files
 test.jl
