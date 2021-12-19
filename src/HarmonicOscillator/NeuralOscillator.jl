@@ -75,8 +75,8 @@ cb = function(p,l,pred)
     traj_plot = plot!(traj_plot, t0, pred[1, :],
         title="Trajectory",
         label="Prediction using neural potential",
-        xlabel=L"\textrm{Time } t",
-        ylabel=L"\textrm{Displacement } x(t)",
+        xlabel=L"\textrm{Time}\; t",
+        ylabel=L"\textrm{Displacement}\; x(t)",
         ylim=(-7.5,5.0),
         legend=:bottomright,
         linewidth=3
@@ -92,8 +92,8 @@ cb = function(p,l,pred)
     pot_plot = plot!(pot_plot, x0, predicted_potential,
         title="Potential",
         label="Prediction of the potential",
-        xlabel=L"\textrm{Displacement } x",
-        ylabel=L"\textrm{Potential } V(x)",
+        xlabel=L"\textrm{Displacement}\;  x",
+        ylabel=L"\textrm{Potential}\; V(x)",
         xlims=(-true_u0[1],true_u0[1]),
         ylims=(-5.0, 10.0),
         legend=:bottomright,
@@ -103,7 +103,7 @@ cb = function(p,l,pred)
 
     frame(anim, result_plot)
     global epoch += 1
-    return l < 4.5
+    return l < 4.1
 end
 
 # Now we tell Flux how to train the neural network
