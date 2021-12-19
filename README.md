@@ -39,6 +39,9 @@ The folder named `KeplerianOrbits` contains the example usecase of analyzing the
 
 Within the folder named `Cosmology`, we find examples for the use of neural potentials to solve the dark energy problem. In particular, the idea is to learn the potential of a hypothetical quintessence field from supernove Ia data. Additionally, there are also examples of using a neural equation of state instead of a potential to model dark energy more generally as a fluid without an explanation from particle physics. This shows that the idea of neural potentials can be expanded to other quantities.
 
+
+![](https://github.com/jamiegrieser/NeuralPotentials/blob/master/img/64_sample_NeuralEoS_fixed.pdf =500x500)
+
 ## Project Status
 
 The project is no longer maintained.
