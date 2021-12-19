@@ -33,14 +33,14 @@ The notebook teaches your the basics about neural potentials using the example o
 
 The folder named `KeplerianOrbits` contains the example usecase of analyzing the infrared data of the positions of S-stars around Sagittarius A* recorded by the GRAVITY collaboration. It is sligthly more elaborate than the harmonic oscillator but still pretty simple as we again work in the Newtonian framework where we try to learn Newton's gravitational law and its relativistic corrections. The datasets can be obtained from https://vizier.cds.unistra.fr/viz-bin/VizieR-3?-source=J/ApJ/837/30/table5
 
-
+![](https://github.com/jamiegrieser/NeuralPotentials/blob/master/img/SagittariusNeuralKepler.jpg)
 
 ## Redshift-Luminosity Data of Supernovae Ia
 
 Within the folder named `Cosmology`, we find examples for the use of neural potentials to solve the dark energy problem. In particular, the idea is to learn the potential of a hypothetical quintessence field from supernove Ia data. Additionally, there are also examples of using a neural equation of state instead of a potential to model dark energy more generally as a fluid without an explanation from particle physics. This shows that the idea of neural potentials can be expanded to other quantities.
 
 
-![](https://github.com/jamiegrieser/NeuralPotentials/blob/master/img/64_sample_NeuralEoS_fixed.pdf)
+![](https://github.com/jamiegrieser/NeuralPotentials/blob/master/img/NeuralEquationOfState.jpg)
 
 ## Project Status
 
