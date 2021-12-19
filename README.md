@@ -27,13 +27,13 @@ Run the notebook by cloning the package and navigating to the root folder of the
 
 The notebook teaches your the basics about neural potentials using the example of a simple harmonic oscillator. The folder called `HarmonicOscillator` containes further exmpales where techniques like bootstrap-sampling are introduced and more elaborate systems like a double-well potential are analyzed.
 
+![alt text](https://github.com/jamiegrieser/NeuralPotentials/blob/master/img/anim.gif)
+
 ## Sagittarius A* - The Milkyway's Supermassive Black Hole
 
 The folder named `KeplerianOrbits` contains the example usecase of analyzing the infrared data of the positions of S-stars around Sagittarius A* recorded by the GRAVITY collaboration. It is sligthly more elaborate than the harmonic oscillator but still pretty simple as we again work in the Newtonian framework where we try to learn Newton's gravitational law and its relativistic corrections. The datasets can be obtained from https://vizier.cds.unistra.fr/viz-bin/VizieR-3?-source=J/ApJ/837/30/table5
 
-[BootstrappedSagittariusKepler_edit.pdf](https://github.com/jamiegrieser/NeuralPotentials/files/7740709/BootstrappedSagittariusKepler_edit.pdf)
 
-[BootstrappedSagittariusNeuralKeplerPotential.pdf](https://github.com/jamiegrieser/NeuralPotentials/files/7740710/BootstrappedSagittariusNeuralKeplerPotential.pdf)
 
 ## Redshift-Luminosity Data of Supernovae Ia
 
