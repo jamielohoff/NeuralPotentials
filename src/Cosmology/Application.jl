@@ -47,7 +47,7 @@ mu(z, χ) = 5.0 .* log10.((c/H0) * abs.((1.0 .+ z) .* χ)) .+ 25.0
 )
 
 ### Bootstrap Loop 
-repetitions = 3
+repetitions = 128
 itmlist = DataFrame(params = Array[], Ω_ϕ = Array[], μ = Array[], EoS = Array[], potential = Array[], Q = Array[], dQ = Array[])
 println("Beginning Bootstrap...")
 lk = ReentrantLock()
@@ -59,10 +59,10 @@ lk = ReentrantLock()
 
     # Defining the potential and its gradient in the form of a neural network
     V = FastChain(
-        FastDense(1, 4, tanh),
-        FastDense(4, 4, tanh),
-        FastDense(4, 4, tanh),
-        FastDense(4, 1) # maybe choose exp as output function to enforce positive potentials only
+        FastDense(1, 4, relu),
+        FastDense(4, 4, relu),
+        FastDense(4, 4, relu),
+        FastDense(4, 1, relu) # maybe choose exp as output function to enforce positive potentials only
     )
     dV(x, p) = ForwardDiff.gradient(x -> V(x, p)[1], x)[1]
 
@@ -147,8 +147,6 @@ mean_μ, std_μ, CI_μ = Qtils.calculatestatistics(itmlist.μ)
 mean_EoS, std_EoS, CI_EoS = Qtils.calculatestatistics(itmlist.EoS)
 mean_Ω_ϕ, std_Ω_ϕ, CI_Ω_ϕ = Qtils.calculatestatistics(itmlist.Ω_ϕ)
 mean_V, std_V, CI_V = Qtils.calculatestatistics(itmlist.potential)
-mean_Q, std_Q, CI_Q = Qtils.calculatestatistics(itmlist.Q)
-mean_dQ, std_dQ, CI_dQ = Qtils.calculatestatistics(itmlist.dQ)
 
 println("Cosmological parameters: ")
 println("Density parameter Ω_ϕ = ", mean_Ω_ϕ[1], "±", std_Ω_ϕ[1])
@@ -177,30 +175,18 @@ EoS_plot = plot(zrange, mean_EoS, ribbon=CI_EoS,
 Ω_plot = plot!(Ω_plot, zrange, 1.0 .- mean_Ω_ϕ, ribbon=CI_Ω_ϕ, 
                 label=L"\textrm{Prediction of the dark energy density }\; \Omega_m"
 )
-V_plot = plot(mean_Q, mean_V, ribbon=CI_V, 
+V_plot = plot(zrange, mean_V, ribbon=CI_V, 
                 title="Potential",
-                xlabel=L"\textrm{Field Amplitude }\; \phi \textrm{ } [10^{-3}\textrm{m}_P]", 
+                xlabel=L"\textrm{Redshift }\; z", 
                 ylabel=L"\textrm{Potential } \; \frac{V(\phi (z))}{10^{-16}} \textrm{ } [\textrm{eV}^4]", 
                 legend=false
 )
-Q_plot = plot(zrange, mean_Q, ribbon=CI_Q, 
-                title="Field Evolution",
-                xlabel=L"\textrm{Redshift } \; z", 
-                ylabel=L"\textrm{Field Amplitude } \; \phi \textrm{ } [10^{-3}\textrm{m}_P]", 
-                legend=false
-)
-dQ_plot = plot(zrange, mean_dQ, ribbon=CI_dQ, 
-                title="Field Evolution",
-                xlabel=L"\textrm{Redshift } \; z", 
-                ylabel=L"\textrm{Derivative } \; \frac{\mathrm{d}\phi}{\mathrm{d}z} \textrm{ } [10^{-3}\textrm{m}_P]", 
-                legend=false
-)
 
-result_plot = plot(μ_plot, Ω_plot, V_plot, EoS_plot, Q_plot, dQ_plot, 
-                    layout=(3,2), 
-                    size=(1600, 2100), 
+result_plot = plot(μ_plot, Ω_plot, V_plot, EoS_plot,
+                    layout=(2,2), 
+                    size=(1200, 1200), 
                     margin=12mm
 )
 # Save the figure
-savefig(result_plot, "1024_sample_NeuralQuintessence.pdf")
+savefig(result_plot, "Application.pdf")
 
