@@ -313,29 +313,7 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random, Distributions
         lower_CI = qtls[1,:] - μ
         upper_CI = qtls[2,:] - μ
 
-        return μ, σ, [lower_CI, upper_CI]
+        return μ, σ, (-lower_CI, upper_CI)
     end
-
-    """
-    Function to calculate the distance modulus.
-    We have a +25 instead of -5 because we measure distances in Mpc!
-
-    Arguments:
-    1. `z`: Array that contains the redshifts.
-    2. `χ`: Array that contains the unitless comoving distance.
-    """
-    mu(z, χ) = 5.0 .* log10.((c/H0) * abs.((1.0 .+ z) .* χ)) .+ 25.0 
-
-    """
-    Function to calculate the density paramter of the quintessence field.
-
-    Arguments:
-    1. `dQ`: Array that contains the time-derivative of the quintessence field Q. 
-    2. `E`: Array that contains the time-derivative of the quintessence field Q. 
-    3. `V`: Array that contains the time-derivative of the quintessence field Q. 
-    4. `z`: Array that contains the redshifts.
-    """
-    Ω_ϕ(dQ, E, V, z) = 8π/3 .* (0.5 .* ((1.0 .+ z).*dQ).^2 .+ V./ E.^2)
-
 end
 
