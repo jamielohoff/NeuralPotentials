@@ -315,5 +315,22 @@ using DataFrames, CSV, Statistics, LinearAlgebra, Random, Distributions
 
         return μ, σ, (-lower_CI, upper_CI)
     end
+
+    """
+    TODO Docstring
+    """
+    function calculate_cov_map(covm::AbstractArray, std::AbstractArray, scale::Real=1.0)
+        map = zeros(size(covm))
+        for i ∈ 1:length(std)
+            for j ∈ 1:length(std)
+                if std[i]*std[j] == 0
+                    map[i,j] = 0.0
+                else
+                    map[i,j] = asinh(covm[i,j]/scale) # /(std_V[i]*std_V[j])
+                end
+            end
+        end
+        return map
+    end
 end
 

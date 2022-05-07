@@ -38,7 +38,7 @@ mu(z, χ) = 5.0 .* log10.((c/H0) * abs.((1.0 .+ z) .* χ)) .+ 25.0
 gauss(x, σ, μ) = 1.0/sqrt(2π*σ^2) .* exp(-(x .- μ).^2 ./ σ^2)
 
 ### Bootstrap Loop 
-repetitions = 4
+repetitions = 1
 itmlist = DataFrame(params = Array[], 
                         Ωϕ = Array[], 
                         V = Array[], 
@@ -46,6 +46,7 @@ itmlist = DataFrame(params = Array[],
                         dϕ = Array[], 
                         H = Array[],
                         EoS = Array[])
+
 println("Beginning Bootstrap...")
 lk = ReentrantLock()
 @time Threads.@threads for rep ∈ 1:repetitions
@@ -60,12 +61,12 @@ lk = ReentrantLock()
         FastDense(1, 4, tanh),
         FastDense(4, 8, tanh),
         FastDense(8, 4, tanh),
-        FastDense(4, 1, x -> gauss(x, 3.0, 0.0)) # enforce positive potentials only
+        FastDense(4, 1, x -> gauss(x, 0.3, 0.0)) # enforce positive potentials only, 3.0
     )
     dU(x, p) = ForwardDiff.gradient(x -> U(x, p)[1], x)[1]
 
     # Initialize parameters of the model with uniform distributions
-    p = [0.3, 0.1].*rand(Float64, 2) .+ [0.4, -0.05]
+    p = [0.1, 0.0].*rand(Float64, 2) .+ [0.1, 0.0] # [0.3, 0.1].*rand(Float64, 2) .+ [0.4, -0.05]
     u0 = vcat(p, [1.0, 0.0])
     ps = vcat(p, initial_params(U))
 
@@ -75,6 +76,8 @@ lk = ReentrantLock()
         dQ = u[2]
         E = u[3]
         χ = u[4]
+
+        println(z,dU([Q], p)/(E*(1+z))^2)
         
         Ω_m = 1.0 - Ω_ϕ(dQ, E, U([Q], p)[1], z)
         dE = 1.5*(E/(1+z)) * (Ω_m + 8π/3 * ((1+z)*dQ)^2)
@@ -87,7 +90,7 @@ lk = ReentrantLock()
 
     # Define ODE problem and Optimizer
     problem = ODEProblem(friedmann!, u0, zspan, ps)
-    opt = ADAM(1e-2)
+    opt = ADAM(1e-3)
 
     # Function that predicts the results for a given set of parameters by solving the ODE at the given redshifts
     function predict(params)
@@ -100,7 +103,7 @@ lk = ReentrantLock()
         µ = mu(sampledata.z, pred[end,indexes])
         potential = U(reshape(pred[1,:],1,:), params[3:end])
         Ωϕ = Ω_ϕ(pred[2,indexes], pred[3,indexes], potential[indexes], uniquez)
-        return Qtils.χ2(μ, sampledata) + 250.0*abs(Ωϕ[1] - 0.7) + 125.0*abs(Ωϕ[end]), pred
+        return Qtils.χ2(μ, sampledata) # + 250.0*abs(Ωϕ[1] - 0.7) + 125.0*abs(Ωϕ[end]), pred
     end
 
     # Callback function
@@ -110,7 +113,7 @@ lk = ReentrantLock()
 
     try
         # Start the training of the model
-        @time result =  DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=60) # 6000 is good value
+        @time result = DiffEqFlux.sciml_train(loss, ps, opt, cb=cb, maxiters=10) # 6000 is good value
 
         # Use the best result, i.e. the one with the lowest loss and compute the potential etc. for it
         u0 = vcat(result.minimizer[1:2], [1.0, 0.0])
@@ -178,29 +181,7 @@ classicplot.plot_data(
 
 # Covariance matrix
 covm = cov(itmlist.V)
-map = zeros(size(covm))
+map = Qtils.calculate_cov_map(covm, std_V)
 
-scale = 1.0
-for i ∈ 1:length(std_V)
-    for j ∈ 1:length(std_V)
-        if std_V[i]*std_V[j] == 0
-            map[i,j] = 0.0
-        else
-            map[i,j] = asinh(covm[i,j]/scale) # /(std_V[i]*std_V[j])
-        end
-    end
-end
-
-ticks = 200:200:1000
-labels = round.([mean_V[i] for i ∈ ticks]; digits=3)
-heat_plot = heatmap(map, size=(1200,1200), c=:plasma,
-                    title="covariance matrix",
-                    xlabel=L"\textrm{potential} \; \frac{V(\phi)}{10^{-16}} \; [\textrm{eV}^4]",
-                    ylabel=L"\textrm{potential} \; \frac{V(\phi)}{10^{-16}} \; [\textrm{eV}^4]",
-                    xticks=(ticks, labels),
-                    yticks=(ticks, labels),
-)
-
-# Save the figure
-savefig(heat_plot, "CovarianceMatrix.pdf")
+classicplot.plt_heatmap(map)
 
